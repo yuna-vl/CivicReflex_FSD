@@ -7,6 +7,7 @@ import Alert from '../../components/common/Alert';
 import { CategoryPicker } from '../../components/common/CategoryPicker';
 import { compressImage } from '../../utils/compressImage';
 import { LocationPicker } from '../../components/common/LocationPicker';
+import { createIdempotencyKey } from '../../utils/idempotency';
 import { useReports } from '../../hooks/useReports';
 import {
   AlertCircle,
@@ -40,7 +41,8 @@ export const ReportIssuePage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [location, setLocation] = useState({ lat: '', lng: '' });
-
+  const [idempotencyKey, setIdempotencyKey] = useState(() => createIdempotencyKey());
+  
   const subcategories = {
     roads: ['Pothole Repair', 'Damaged Footpath Slab', 'Road Resurfacing Needed', 'Missing Manhole Cover'],
     sanitation: ['Garbage Dump Clearance', 'Secondary Bin Overflow', 'Dead Animal Removal', 'Debris Dumping'],
@@ -70,7 +72,7 @@ export const ReportIssuePage = () => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    if (isSubmitting) return;
 
     // Commit to the shared frontend state layer
     setTimeout(() => {
@@ -84,10 +86,12 @@ export const ReportIssuePage = () => {
         severity: formData.severity,
         citizenName: formData.citizenName,
         citizenPhone: formData.citizenPhone,
-        photoUrl: photoPreview
+        photoUrl: photoPreview,
+        idempotencyKey
       });
 
       setSubmittedTicket(result.ticket);
+      setIdempotencyKey(createIdempotencyKey());
       setIsSubmitting(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 400);
