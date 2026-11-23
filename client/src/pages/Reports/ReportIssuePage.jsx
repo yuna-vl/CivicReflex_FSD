@@ -4,6 +4,7 @@ import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
+import { CategoryPicker } from '../../components/common/CategoryPicker';
 import { useReports } from '../../hooks/useReports';
 import {
   AlertCircle,
@@ -217,25 +218,17 @@ export const ReportIssuePage = () => {
               <Card.Body>
                 <form onSubmit={handleSubmit}>
                   {/* Category Selection */}
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="cat-select">
-                      Civic Service Category <span className="required">*</span>
-                    </label>
-                    <select
-                      id="cat-select"
-                      name="category"
-                      value={formData.category}
-                      onChange={handleInputChange}
-                      className="form-control"
-                      required
-                    >
-                      {CIVIC_CATEGORIES.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* Category Selection */}
+                    <div className="form-group">
+                   <label className="form-label">
+                    Civic Service Category <span className="required">*</span>
+                   </label>
+                  <CategoryPicker
+                      categories={CIVIC_CATEGORIES.map((c) => ({ key: c.id, label: c.name }))}
+                         value={formData.category}
+                      onChange={(value) => handleInputChange({ target: { name: 'category', value } })}
+                                                                                                 />
+                                </div>
 
                   {/* Subcategory */}
                   <div className="form-group">
