@@ -4,6 +4,10 @@ import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
+import { CategoryPicker } from '../../components/common/CategoryPicker';
+import { compressImage } from '../../utils/compressImage';
+import { LocationPicker } from '../../components/common/LocationPicker';
+import { createIdempotencyKey } from '../../utils/idempotency';
 import { useReports } from '../../hooks/useReports';
 import {
   AlertCircle,
@@ -36,7 +40,9 @@ export const ReportIssuePage = () => {
   const [submittedTicket, setSubmittedTicket] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
-
+  const [location, setLocation] = useState({ lat: '', lng: '' });
+  const [idempotencyKey, setIdempotencyKey] = useState(() => createIdempotencyKey());
+  
   const subcategories = {
     roads: ['Pothole Repair', 'Damaged Footpath Slab', 'Road Resurfacing Needed', 'Missing Manhole Cover'],
     sanitation: ['Garbage Dump Clearance', 'Secondary Bin Overflow', 'Dead Animal Removal', 'Debris Dumping'],
@@ -55,20 +61,18 @@ export const ReportIssuePage = () => {
     }));
   };
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+    if (!file) return;
+    const compressed = await compressImage(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result);
+    reader.readAsDataURL(compressed);
+};
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    setIsSubmitting(true);
+    if (isSubmitting) return;
 
     // Commit to the shared frontend state layer
     setTimeout(() => {
@@ -82,10 +86,12 @@ export const ReportIssuePage = () => {
         severity: formData.severity,
         citizenName: formData.citizenName,
         citizenPhone: formData.citizenPhone,
-        photoUrl: photoPreview
+        photoUrl: photoPreview,
+        idempotencyKey
       });
 
       setSubmittedTicket(result.ticket);
+      setIdempotencyKey(createIdempotencyKey());
       setIsSubmitting(false);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 400);
@@ -217,25 +223,17 @@ export const ReportIssuePage = () => {
               <Card.Body>
                 <form onSubmit={handleSubmit}>
                   {/* Category Selection */}
-                  <div className="form-group">
-                    <label className="form-label" htmlFor="cat-select">
-                      Civic Service Category <span className="required">*</span>
-                    </label>
-                    <select
-                      id="cat-select"
-                      name="category"
-                      value={formData.category}
-                      onChange={handleInputChange}
-                      className="form-control"
-                      required
-                    >
-                      {CIVIC_CATEGORIES.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                  {/* Category Selection */}
+                    <div className="form-group">
+                   <label className="form-label">
+                    Civic Service Category <span className="required">*</span>
+                   </label>
+                  <CategoryPicker
+                      categories={CIVIC_CATEGORIES.map((c) => ({ key: c.id, label: c.name }))}
+                         value={formData.category}
+                      onChange={(value) => handleInputChange({ target: { name: 'category', value } })}
+                                                                                                 />
+                                </div>
 
                   {/* Subcategory */}
                   <div className="form-group">
@@ -313,7 +311,11 @@ export const ReportIssuePage = () => {
                       />
                     </div>
                   </div>
-
+                        
+                  <div className="form-group">
+                      <label className="form-label">Exact Location</label>
+                      <LocationPicker value={location} onChange={setLocation} />
+                </div>
                   {/* Photo Evidence Upload */}
                   <div className="form-group">
                     <label className="form-label">
