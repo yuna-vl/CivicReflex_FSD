@@ -5,6 +5,7 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
 import { CategoryPicker } from '../../components/common/CategoryPicker';
+import { compressImage } from '../../utils/compressImage';
 import { useReports } from '../../hooks/useReports';
 import {
   AlertCircle,
@@ -56,16 +57,14 @@ export const ReportIssuePage = () => {
     }));
   };
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+    if (!file) return;
+    const compressed = await compressImage(file);
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoPreview(reader.result);
+    reader.readAsDataURL(compressed);
+};
 
   const handleSubmit = (e) => {
     e.preventDefault();
