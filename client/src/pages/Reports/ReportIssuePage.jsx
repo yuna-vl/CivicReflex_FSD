@@ -6,6 +6,7 @@ import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
 import { CategoryPicker } from '../../components/common/CategoryPicker';
 import { compressImage } from '../../utils/compressImage';
+import { LocationPicker } from '../../components/common/LocationPicker';
 import { useReports } from '../../hooks/useReports';
 import {
   AlertCircle,
@@ -38,6 +39,7 @@ export const ReportIssuePage = () => {
   const [submittedTicket, setSubmittedTicket] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [location, setLocation] = useState({ lat: '', lng: '' });
 
   const subcategories = {
     roads: ['Pothole Repair', 'Damaged Footpath Slab', 'Road Resurfacing Needed', 'Missing Manhole Cover'],
@@ -305,7 +307,11 @@ export const ReportIssuePage = () => {
                       />
                     </div>
                   </div>
-
+                        
+                  <div className="form-group">
+                      <label className="form-label">Exact Location</label>
+                      <LocationPicker value={location} onChange={setLocation} />
+                </div>
                   {/* Photo Evidence Upload */}
                   <div className="form-group">
                     <label className="form-label">
