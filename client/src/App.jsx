@@ -1,4 +1,4 @@
-import React from 'react';
+import React,{lazy,Suspense} from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AccessibilityProvider } from './context/AccessibilityContext';
 import { AuthProvider } from './context/AuthContext';
@@ -21,31 +21,33 @@ import LoginPage from './pages/Auth/LoginPage';
 
 // Authority Portal Layout & Pages
 import AuthorityLayout from './components/layout/AuthorityLayout';
-import AuthorityDashboardPage from './pages/Authority/AuthorityDashboardPage';
-import AuthorityGrievancesPage from './pages/Authority/AuthorityGrievancesPage';
-import AuthorityAssignmentsPage from './pages/Authority/AuthorityAssignmentsPage';
-import AuthorityBlindSpotsPage from './pages/Authority/AuthorityBlindSpotsPage';
-import AuthorityAnalyticsPage from './pages/Authority/AuthorityAnalyticsPage';
-import AuthorityProfilePage from './pages/Authority/AuthorityProfilePage';
+
 
 // Field Officer Portal Layout & Pages
 import OfficerLayout from './components/layout/OfficerLayout';
-import OfficerDashboardPage from './pages/Officer/OfficerDashboardPage';
-import OfficerAssignedWorkPage from './pages/Officer/OfficerAssignedWorkPage';
-import OfficerInspectionsPage from './pages/Officer/OfficerInspectionsPage';
-import OfficerProfilePage from './pages/Officer/OfficerProfilePage';
 
 // Milestone 4: System Administrator Portal Layout & Pages
 import AdminLayout from './components/layout/AdminLayout';
-import AdminDashboardPage from './pages/Admin/AdminDashboardPage';
-import AdminUsersPage from './pages/Admin/AdminUsersPage';
-import AdminModerationPage from './pages/Admin/AdminModerationPage';
-import AdminWardsPage from './pages/Admin/AdminWardsPage';
-import AdminDepartmentsPage from './pages/Admin/AdminDepartmentsPage';
-import AdminCategoriesPage from './pages/Admin/AdminCategoriesPage';
-import AdminAuditLogsPage from './pages/Admin/AdminAuditLogsPage';
-import AdminSettingsPage from './pages/Admin/AdminSettingsPage';
-import AdminProfilePage from './pages/Admin/AdminProfilePage';
+// Lazy-loaded portal pages
+const AuthorityDashboardPage = lazy(() => import('./pages/Authority/AuthorityDashboardPage').then((m) => ({ default: m.AuthorityDashboardPage })));
+const AuthorityGrievancesPage = lazy(() => import('./pages/Authority/AuthorityGrievancesPage').then((m) => ({ default: m.AuthorityGrievancesPage })));
+const AuthorityAssignmentsPage = lazy(() => import('./pages/Authority/AuthorityAssignmentsPage').then((m) => ({ default: m.AuthorityAssignmentsPage })));
+const AuthorityBlindSpotsPage = lazy(() => import('./pages/Authority/AuthorityBlindSpotsPage').then((m) => ({ default: m.AuthorityBlindSpotsPage })));
+const AuthorityAnalyticsPage = lazy(() => import('./pages/Authority/AuthorityAnalyticsPage').then((m) => ({ default: m.AuthorityAnalyticsPage })));
+const AuthorityProfilePage = lazy(() => import('./pages/Authority/AuthorityProfilePage').then((m) => ({ default: m.AuthorityProfilePage })));
+const OfficerDashboardPage = lazy(() => import('./pages/Officer/OfficerDashboardPage').then((m) => ({ default: m.OfficerDashboardPage })));
+const OfficerAssignedWorkPage = lazy(() => import('./pages/Officer/OfficerAssignedWorkPage').then((m) => ({ default: m.OfficerAssignedWorkPage })));
+const OfficerInspectionsPage = lazy(() => import('./pages/Officer/OfficerInspectionsPage').then((m) => ({ default: m.OfficerInspectionsPage })));
+const OfficerProfilePage = lazy(() => import('./pages/Officer/OfficerProfilePage').then((m) => ({ default: m.OfficerProfilePage })));
+const AdminDashboardPage = lazy(() => import('./pages/Admin/AdminDashboardPage').then((m) => ({ default: m.AdminDashboardPage })));
+const AdminUsersPage = lazy(() => import('./pages/Admin/AdminUsersPage').then((m) => ({ default: m.AdminUsersPage })));
+const AdminModerationPage = lazy(() => import('./pages/Admin/AdminModerationPage').then((m) => ({ default: m.AdminModerationPage })));
+const AdminWardsPage = lazy(() => import('./pages/Admin/AdminWardsPage').then((m) => ({ default: m.AdminWardsPage })));
+const AdminDepartmentsPage = lazy(() => import('./pages/Admin/AdminDepartmentsPage').then((m) => ({ default: m.AdminDepartmentsPage })));
+const AdminCategoriesPage = lazy(() => import('./pages/Admin/AdminCategoriesPage').then((m) => ({ default: m.AdminCategoriesPage })));
+const AdminAuditLogsPage = lazy(() => import('./pages/Admin/AdminAuditLogsPage').then((m) => ({ default: m.AdminAuditLogsPage })));
+const AdminSettingsPage = lazy(() => import('./pages/Admin/AdminSettingsPage').then((m) => ({ default: m.AdminSettingsPage })));
+const AdminProfilePage = lazy(() => import('./pages/Admin/AdminProfilePage').then((m) => ({ default: m.AdminProfilePage })));
 
 // Global & Component Styles
 import './styles/variables.css';
@@ -76,6 +78,7 @@ export function App() {
       <AuthProvider>
         <ReportsProvider>
           <BrowserRouter>
+          <Suspense fallback={<div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div>}>
             <Routes>
               {/* Public & Citizen Portal Routes */}
               <Route path="/" element={<Layout />}>
@@ -161,6 +164,7 @@ export function App() {
                 <Route path="profile" element={<AdminProfilePage />} />
               </Route>
             </Routes>
+            </Suspense>
           </BrowserRouter>
         </ReportsProvider>
       </AuthProvider>
