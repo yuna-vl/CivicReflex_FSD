@@ -10,6 +10,7 @@ export const Button = ({
   disabled = false,
   type = 'button',
   onClick,
+  fullWidth=false,
   ...rest
 }) => {
   const variantClass = `btn-${variant}`;
@@ -20,7 +21,9 @@ export const Button = ({
       type={type}
       className={`btn ${variantClass} ${sizeClass} ${className}`.trim()}
       disabled={disabled}
+      style={{ width: fullWidth ? '100%' : undefined }}
       onClick={onClick}
+      
       {...rest}
     >
       {Icon && iconPosition === 'left' && <Icon size={size === 'sm' ? 14 : size === 'lg' ? 20 : 16} aria-hidden="true" />}
