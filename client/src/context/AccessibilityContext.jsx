@@ -12,7 +12,11 @@ export const AccessibilityProvider = ({ children }) => {
   const [highContrast, setHighContrast] = useState(() => {
     return localStorage.getItem('civicreflex_high_contrast') === 'true';
   });
-
+  const [simpleMode, setSimpleMode] = useState(() => localStorage.getItem('civicreflex_simple_mode') === 'true');
+useEffect(() => {
+  document.documentElement.classList.toggle('simple-mode', simpleMode);
+  localStorage.setItem('civicreflex_simple_mode', String(simpleMode));
+}, [simpleMode]);
   // Language: 'en', 'hi', 'ta', 'te', 'bn', 'mr'
   const [language, setLanguage] = useState(() => {
     return localStorage.getItem('civicreflex_language') || 'en';
@@ -48,6 +52,9 @@ export const AccessibilityProvider = ({ children }) => {
   const toggleHighContrast = () => {
     setHighContrast((prev) => !prev);
   };
+  const toggleSimpleMode = () => {
+  setSimpleMode((prev) => !prev);
+};
 
   const changeLanguage = (langCode) => {
     setLanguage(langCode);

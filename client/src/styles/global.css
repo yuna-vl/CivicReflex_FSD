@@ -245,4 +245,10 @@ html.high-contrast .form-control {
   background-color: #000000;
   color: #FFFFFF;
 }
-
+.simple-mode *,
+.simple-mode *::before,
+.simple-mode *::after {
+  animation: none !important;
+  transition: none !important;
+  box-shadow: none !important;
+}
