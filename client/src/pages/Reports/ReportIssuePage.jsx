@@ -4,6 +4,7 @@ import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
+import { VoiceInput } from '../../components/common/VoiceInput';
 import { useReports } from '../../hooks/useReports';
 import {
   AlertCircle,
@@ -365,6 +366,16 @@ export const ReportIssuePage = () => {
                     <label className="form-label" htmlFor="desc-input">
                       Detailed Problem Description <span className="required">*</span>
                     </label>
+                    <VoiceInput
+                      onResult={(text) =>
+                        handleInputChange({
+                          target: {
+                              name: 'description',
+                              value: formData.description ? `${formData.description} ${text}` : text,
+          },
+        })
+            }
+       />
                     <textarea
                       id="desc-input"
                       name="description"
