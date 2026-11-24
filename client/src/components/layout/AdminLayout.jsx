@@ -158,7 +158,7 @@ export const AdminLayout = () => {
               {mobileSidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
 
-            <Emblem size="sm" />
+            <Emblem size={36} />
 
             <div style={{ borderLeft: '1px solid #1E293B', paddingLeft: '0.875rem' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

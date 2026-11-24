@@ -12,7 +12,7 @@ const LANGUAGES = [
 ];
 
 export const TopUtilityBar = () => {
-  const { fontSize, setFontSize, highContrast, toggleHighContrast, language, changeLanguage } = useAccessibility();
+  const { fontSize, setFontSize, highContrast, toggleHighContrast,simpleMode,toggleSimpleMode, language, changeLanguage } = useAccessibility();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const langDropdownRef = useRef(null);
 
@@ -167,6 +167,27 @@ export const TopUtilityBar = () => {
             <Eye size={12} aria-hidden="true" />
             <span>{highContrast ? 'Standard View' : 'High Contrast'}</span>
           </button>
+          <span style={{ color: '#334155' }}>|</span>
+
+{/* Simple Mode Toggle */}
+<button
+  type="button"
+  onClick={toggleSimpleMode}
+  aria-pressed={simpleMode}
+  title={simpleMode ? 'Turn off simple mode' : 'Turn on simple mode (fewer animations and effects)'}
+  style={{
+    backgroundColor: simpleMode ? '#FFFF00' : 'transparent',
+    color: simpleMode ? '#000000' : '#FFFFFF',
+    border: '1px solid #334155',
+    padding: '1px 8px',
+    fontSize: '0.6875rem',
+    fontWeight: 700,
+    cursor: 'pointer',
+    borderRadius: '2px'
+  }}
+>
+  {simpleMode ? 'Normal View' : 'Simple Mode'}
+</button>
 
           <span style={{ color: '#334155' }}>|</span>
 
