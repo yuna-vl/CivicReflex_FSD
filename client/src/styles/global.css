@@ -252,3 +252,13 @@ html.high-contrast .form-control {
   transition: none !important;
   box-shadow: none !important;
 }
+/* Visible keyboard focus (WCAG 2.4.7 / 1.4.11) */
+:focus-visible {
+  outline: 3px solid #003366;
+  outline-offset: 2px;
+}
+
+/* Dark top bar needs a light focus ring */
+.top-utility-bar :focus-visible {
+  outline-color: #FFFF00;
+}
