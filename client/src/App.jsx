@@ -9,15 +9,14 @@ import Layout from './components/layout/Layout';
 import ProtectedRoute from './components/common/ProtectedRoute';
 
 // Public & Citizen Pages
-import HomePage from './pages/Home/HomePage';
-import AboutPage from './pages/About/AboutPage';
-import CitizenServicesPage from './pages/Citizen/CitizenServicesPage';
-import CitizenDashboardPage from './pages/Citizen/CitizenDashboardPage';
-import ReportIssuePage from './pages/Reports/ReportIssuePage';
-import BlindSpotsPage from './pages/BlindSpots/BlindSpotsPage';
-import TrackComplaintPage from './pages/Tracking/TrackComplaintPage';
-import NotificationsPage from './pages/Notifications/NotificationsPage';
-import LoginPage from './pages/Auth/LoginPage';
+const AboutPage = lazy(() => import('./pages/About/AboutPage').then((m) => ({ default: m.AboutPage })));
+const CitizenServicesPage = lazy(() => import('./pages/Citizen/CitizenServicesPage').then((m) => ({ default: m.CitizenServicesPage })));
+const CitizenDashboardPage = lazy(() => import('./pages/Citizen/CitizenDashboardPage').then((m) => ({ default: m.CitizenDashboardPage })));
+const ReportIssuePage = lazy(() => import('./pages/Reports/ReportIssuePage').then((m) => ({ default: m.ReportIssuePage })));
+const BlindSpotsPage = lazy(() => import('./pages/BlindSpots/BlindSpotsPage').then((m) => ({ default: m.BlindSpotsPage })));
+const TrackComplaintPage = lazy(() => import('./pages/Tracking/TrackComplaintPage').then((m) => ({ default: m.TrackComplaintPage })));
+const NotificationsPage = lazy(() => import('./pages/Notifications/NotificationsPage').then((m) => ({ default: m.NotificationsPage })));
+const LoginPage = lazy(() => import('./pages/Auth/LoginPage').then((m) => ({ default: m.LoginPage })));
 
 // Authority Portal Layout & Pages
 import AuthorityLayout from './components/layout/AuthorityLayout';
