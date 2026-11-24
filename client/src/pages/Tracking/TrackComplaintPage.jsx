@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
+import { SpeakButton } from '../../components/common/SpeakButton';
 import Alert from '../../components/common/Alert';
 import { useReports } from '../../hooks/useReports';
 import {
@@ -173,6 +174,8 @@ export const TrackComplaintPage = () => {
                       {currentTicket.ticketNumber}
                     </span>
                     <Badge status={currentTicket.currentStatus} />
+              
+                    <SpeakButton text={`Complaint ${currentTicket.ticketNumber} is ${currentTicket.currentStatus}.`} />
                     <span style={{ fontSize: '0.75rem', backgroundColor: '#FEF3C7', color: '#92400E', padding: '2px 8px', fontWeight: 700, borderRadius: '2px' }}>
                       {currentTicket.urgencyLevel}
                     </span>
