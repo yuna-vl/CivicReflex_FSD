@@ -74,7 +74,7 @@ const { t } = useTranslation();
 
       <div className="portal-container" style={{ paddingTop: '2rem' }}>
         <div className="section-heading">
-          <span>{t('home.trackerTitle')}</span>
+          <span>{t('track.title')}</span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <Button
               variant="secondary"
@@ -82,9 +82,9 @@ const { t } = useTranslation();
               icon={LayoutDashboard}
               onClick={() => navigate('/dashboard')}
             >
-              {t('home.myDashboard')}
+              {t('track.dashboard')}
             </Button>
-            <Badge variant="navy">Real-time Redressal Engine</Badge>
+            <Badge variant="navy">{t('track.realTimeRedressal')}</Badge>
           </div>
         </div>
 
@@ -104,15 +104,14 @@ const { t } = useTranslation();
               <input
                 type="text"
                 className="form-control"
-                placeholder={t('track.ticketPlaceholder')}
-              
+                placeholder={t('track.placeholder')}
                 value={inputTicket}
                 onChange={(e) => setInputTicket(e.target.value)}
                 style={{ fontFamily: 'monospace', textTransform: 'uppercase', fontWeight: 700 }}
               />
             </div>
             <Button variant="primary" type="submit" icon={Search}>
-  {t('track.searchAuditLog')}
+  {t('track.search')}
 </Button>
           </form>
 
@@ -251,7 +250,7 @@ const { t } = useTranslation();
             {/* Visual Multi-Stage Progress Lifecycle */}
             <div style={{ marginBottom: '2.5rem' }}>
               <div className="section-heading">
-                <span>Multi-Stage Redressal Timeline</span>
+                <span>{t('track.lifecycle')}</span>
                 <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
                   Audited under Municipal By-laws 2026
                 </span>
@@ -425,12 +424,7 @@ const { t } = useTranslation();
                       Are you a resident of <strong>{currentTicket.ward}</strong>? Have you physically inspected this location and confirmed that the work was satisfactorily completed?
                     </p>
                   </div>
-                  <Breadcrumbs
-  items={[
-    { label: 'Citizen Services', to: '/services' },
-    { label: 'Track Complaint' }
-  ]}
-/>
+                 
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <Button
@@ -439,7 +433,7 @@ const { t } = useTranslation();
                       onClick={handleVerificationVote}
                       disabled={isVoted}
                     >
-                      {isVoted ? 'Verified by You' : 'Verify Remediation'}
+                      {isVoted ? t('track.verified') : t('track.verifyRemediation')}
                     </Button>
                   </div>
                 </div>
