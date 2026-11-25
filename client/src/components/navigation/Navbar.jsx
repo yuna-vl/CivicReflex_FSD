@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { NavLink, useLocation } from 'react-router-dom';
 import {
   Menu,
@@ -26,6 +27,7 @@ export const Navbar = () => {
   const [servicesDropdownOpen, setServicesDropdownOpen] = useState(false);
   const servicesDropdownRef = useRef(null);
   const location = useLocation();
+  const { t } = useTranslation();
   const { userReports } = useReports();
   const { role } = useAuth();
 
@@ -99,7 +101,7 @@ export const Navbar = () => {
             })}
           >
             <Home size={15} aria-hidden="true" />
-            <span>Home</span>
+            <span>{t('nav.home')}</span>
           </NavLink>
 
           {/* About Us */}
@@ -122,7 +124,7 @@ export const Navbar = () => {
             })}
           >
             <Info size={15} aria-hidden="true" />
-            <span>About Us</span>
+            <span>{t('nav.about')}</span>
           </NavLink>
 
           {/* Citizen Services (With Dropdown Menu) */}
@@ -155,7 +157,7 @@ export const Navbar = () => {
               }}
             >
               <Layers size={15} aria-hidden="true" />
-              <span>Citizen Services</span>
+              <span>{t('nav.services')}</span>
               <ChevronDown size={14} aria-hidden="true" style={{ transform: servicesDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
             </button>
 
@@ -395,7 +397,7 @@ export const Navbar = () => {
             })}
           >
             <AlertCircle size={15} aria-hidden="true" />
-            <span>Report an Issue</span>
+            <span>{t('nav.report')}</span>
           </NavLink>
 
           {/* Blind Spots */}
@@ -418,7 +420,7 @@ export const Navbar = () => {
             })}
           >
             <EyeOff size={15} aria-hidden="true" />
-            <span>Blind Spots</span>
+            <span>{t('nav.blind-spots')}</span>
           </NavLink>
 
           {/* Track Complaint */}
@@ -441,7 +443,7 @@ export const Navbar = () => {
             })}
           >
             <Search size={15} aria-hidden="true" />
-            <span>Track Complaint</span>
+            <span>{t('nav.track')}</span>
           </NavLink>
 
           {/* Notifications */}
@@ -464,7 +466,7 @@ export const Navbar = () => {
             })}
           >
             <Bell size={15} aria-hidden="true" />
-            <span>Notifications</span>
+            <span>{t('nav.notifications')}</span>
           </NavLink>
         </div>
 
@@ -628,7 +630,7 @@ export const Navbar = () => {
             end
             style={{ color: '#FFFFFF', padding: '0.5rem 0', textDecoration: 'none', fontWeight: 600 }}
           >
-            Home
+            {t('nav.home')}
           </NavLink>
           <NavLink
             to="/dashboard"
