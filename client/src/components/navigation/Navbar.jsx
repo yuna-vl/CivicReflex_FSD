@@ -420,7 +420,7 @@ export const Navbar = () => {
             })}
           >
             <EyeOff size={15} aria-hidden="true" />
-            <span>{t('nav.blind-spots')}</span>
+         <span>{t('nav.blindSpots')}</span>
           </NavLink>
 
           {/* Track Complaint */}
