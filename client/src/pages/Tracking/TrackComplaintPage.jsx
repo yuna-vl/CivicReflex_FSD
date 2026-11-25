@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
+import { useTranslation } from 'react-i18next';
 import Alert from '../../components/common/Alert';
 import { useReports } from '../../hooks/useReports';
 import {
@@ -20,7 +21,7 @@ export const TrackComplaintPage = () => {
   const ticketParam = searchParams.get('ticket') || '';
 
   const { getTicket, verifyTicket, confirmCitizenResolution, reopenGrievance, userReports } = useReports();
-
+const { t } = useTranslation();
   const [inputTicket, setInputTicket] = useState(ticketParam || 'CR-2026-8842');
   const [activeTicketId, setActiveTicketId] = useState(ticketParam || 'CR-2026-8842');
   const [errorMsg, setErrorMsg] = useState('');
@@ -73,7 +74,7 @@ export const TrackComplaintPage = () => {
 
       <div className="portal-container" style={{ paddingTop: '2rem' }}>
         <div className="section-heading">
-          <span>Grievance Lifecycle & Public Audit Trail</span>
+          <span>{t('home.trackerTitle')}</span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <Button
               variant="secondary"
@@ -81,7 +82,7 @@ export const TrackComplaintPage = () => {
               icon={LayoutDashboard}
               onClick={() => navigate('/dashboard')}
             >
-              My Dashboard
+              {t('home.myDashboard')}
             </Button>
             <Badge variant="navy">Real-time Redressal Engine</Badge>
           </div>
@@ -103,15 +104,16 @@ export const TrackComplaintPage = () => {
               <input
                 type="text"
                 className="form-control"
-                placeholder="Enter Complaint / Ticket ID (e.g. CR-2026-8842)"
+                placeholder={t('track.ticketPlaceholder')}
+              
                 value={inputTicket}
                 onChange={(e) => setInputTicket(e.target.value)}
                 style={{ fontFamily: 'monospace', textTransform: 'uppercase', fontWeight: 700 }}
               />
             </div>
             <Button variant="primary" type="submit" icon={Search}>
-              Search Audit Log
-            </Button>
+  {t('track.searchAuditLog')}
+</Button>
           </form>
 
           {/* Quick links to user's complaints and demo tickets */}
@@ -423,6 +425,12 @@ export const TrackComplaintPage = () => {
                       Are you a resident of <strong>{currentTicket.ward}</strong>? Have you physically inspected this location and confirmed that the work was satisfactorily completed?
                     </p>
                   </div>
+                  <Breadcrumbs
+  items={[
+    { label: 'Citizen Services', to: '/services' },
+    { label: 'Track Complaint' }
+  ]}
+/>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <Button
