@@ -8,7 +8,7 @@
 
 const express = require('express');
 const reportsController = require('./reports.controller');
-const { createReportSchema } = require('./reports.validation');
+const { createReportSchema, verifyReportSchema } = require('./reports.validation');
 
 const router = express.Router();
 
@@ -33,5 +33,7 @@ router.get('/', reportsController.getReports);
 // TODO: protect with auth in feature/auth-admin
 router.get('/:id', reportsController.getReportById);
 
-module.exports = router;
+// TODO: replace body userId with req.user.id in feature/auth-admin
+router.post('/:id/verify', validateBody(verifyReportSchema), reportsController.verifyReport);
 
+module.exports = router;

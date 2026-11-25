@@ -47,6 +47,15 @@ const createReportSchema = z.object({
   longitude: z.number().min(-180).max(180).optional()
 });
 
+// Validation schema for citizen report verification
+const verifyReportSchema = z.object({
+  userId: z
+    .string({ required_error: 'userId is required' })
+    .trim()
+    .min(1, 'userId cannot be empty')
+});
+
 module.exports = {
-  createReportSchema
+  createReportSchema,
+  verifyReportSchema
 };

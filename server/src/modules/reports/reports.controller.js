@@ -70,8 +70,28 @@ const getReportById = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/reports/:id/verify
+ * Adds citizen verification to a report (one vote per user).
+ */
+const verifyReport = async (req, res, next) => {
+  try {
+    // TODO: replace body userId with req.user.id in feature/auth-admin
+    const { userId } = req.body;
+    const report = await reportsService.verifyReport(req.params.id, userId);
+
+    res.status(200).json({
+      success: true,
+      data: report
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   createReport,
   getReports,
-  getReportById
+  getReportById,
+  verifyReport
 };

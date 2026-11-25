@@ -17,6 +17,8 @@ const { clientUrl } = require('./config/env');
 const ApiError = require('./utils/ApiError');
 const errorHandler = require('./middleware/errorHandler');
 const reportsRouter = require('./modules/reports/reports.routes');
+const departmentsRouter = require('./modules/departments/departments.routes');
+const ticketsRouter = require('./modules/tickets/tickets.routes');
 
 const app = express();
 
@@ -46,6 +48,8 @@ app.get('/health', (req, res) => {
 
 // 5. API Routes
 app.use('/api/reports', reportsRouter);
+app.use('/api/departments', departmentsRouter);
+app.use('/api/tickets', ticketsRouter);
 
 // 6. 404 Handler - Catches any requests made to undefined routes and forwards an ApiError
 app.use((req, res, next) => {

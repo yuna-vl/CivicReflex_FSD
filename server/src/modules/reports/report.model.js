@@ -53,6 +53,12 @@ const reportSchema = new mongoose.Schema(
       trim: true
     },
 
+    // Associated civic grievance ticket number (e.g. CR-2026-9001)
+    ticketNumber: {
+      type: String,
+      trim: true
+    },
+
     // Type of report: civic issue vs citizen experience
     type: {
       type: String,
@@ -122,7 +128,7 @@ const reportSchema = new mongoose.Schema(
       default: 'Medium'
     },
 
-    // Citizen engagement & privacy
+    // Citizen engagement & verification
     upvotes: {
       type: Number,
       default: 0
@@ -130,6 +136,10 @@ const reportSchema = new mongoose.Schema(
     verifiedCount: {
       type: Number,
       default: 0
+    },
+    verifiedBy: {
+      type: [String],
+      default: []
     },
     isAnonymous: {
       type: Boolean,
@@ -208,4 +218,3 @@ reportSchema.set('toObject', {
 const Report = mongoose.model('Report', reportSchema);
 
 module.exports = Report;
-
