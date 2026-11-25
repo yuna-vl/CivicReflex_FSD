@@ -3,7 +3,8 @@
  * 
  * Purpose:
  * Mongoose schema and model definition for official civic grievance tickets.
- * Tracks operational resolution progress, assigned authorities, and chronological milestones.
+ * Tracks operational resolution progress, assigned authorities, field inspections,
+ * and chronological milestones.
  */
 
 const mongoose = require('mongoose');
@@ -48,6 +49,41 @@ const timelineStageSchema = new mongoose.Schema(
     officer: {
       type: String,
       trim: true,
+      default: null
+    }
+  },
+  { _id: false }
+);
+
+// Sub-schema for field officer inspection workflow
+const inspectionSchema = new mongoose.Schema(
+  {
+    startedAt: {
+      type: Date,
+      default: null
+    },
+    remarks: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    beforePhotoUrl: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    afterPhotoUrl: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    completionNote: {
+      type: String,
+      trim: true,
+      default: null
+    },
+    completedAt: {
+      type: Date,
       default: null
     }
   },
@@ -126,10 +162,17 @@ const ticketSchema = new mongoose.Schema(
     // Departmental assignment
     assignedOfficerId: {
       type: String,
-      trim: true
+      trim: true,
+      default: null
     },
     assignedAuthority: {
       type: assignedAuthoritySchema,
+      default: () => ({})
+    },
+
+    // Field officer inspection tracking
+    inspection: {
+      type: inspectionSchema,
       default: () => ({})
     },
 
