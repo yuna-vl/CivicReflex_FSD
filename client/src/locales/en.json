@@ -24,5 +24,19 @@
     "description": "Detailed Problem Description",
     "urgency": "Grievance Urgency Tier",
     "submit": "Register Official Grievance"
-  }
+  },
+  "home": {
+  "badge": "National Civic Accountability Initiative",
+  "heroTitle": "Direct Civic Grievance Redressal & Pedestrian Safety Audit",
+  "heroDescription": "CivicReflex bridges citizens with municipal engineers to resolve road potholes, garbage accumulation, unlit streets, and inaccessible urban walkways through time-bound Service Level Agreements (SLAs) and mandatory public verification.",
+  "reportIssue": "File a Grievance Now",
+  "auditBlindSpots": "Audit Blind Spots",
+  "trackerTitle": "Quick Grievance Tracker",
+  "ticketLabel": "Complaint / Ticket Number:",
+  "quickServices": "Citizen Quick Services",
+  "howItWorks": "How CivicReflex Works",
+  "categories": "Civic Issue Categories",
+  "notifications": "Latest Notifications and Circulars",
+  "transparency": "Public Transparency & Redressal Performance"
+}
 }
