@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-
+import i18n from '../i18n/index.js';
 const AccessibilityContext = createContext(null);
 
 export const AccessibilityProvider = ({ children }) => {
@@ -35,9 +35,11 @@ export const AccessibilityProvider = ({ children }) => {
   }, [highContrast]);
 
   // Persist language selection
-  useEffect(() => {
-    localStorage.setItem('civicreflex_language', language);
-  }, [language]);
+  // Persist language selection and apply it to translations
+useEffect(() => {
+  localStorage.setItem('civicreflex_language', language);
+  i18n.changeLanguage(language);
+}, [language]);
 
   const handleSetFontSize = (size) => {
     if (['small', 'normal', 'large'].includes(size)) {
