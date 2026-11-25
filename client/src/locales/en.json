@@ -1,6 +1,6 @@
 {
   "topbar": {
-    "skip": "skip to main content",
+    "skip": "Skip to Main Content",
     "font": "Font:",
     "highContrast": "High Contrast",
     "standardView": "Standard View"
@@ -13,5 +13,16 @@
     "blindSpots": "Blind Spots",
     "track": "Track Complaint",
     "notifications": "Notifications"
+  },
+  "report": {
+    "category": "Civic Service Category",
+    "subcategory": "Problem Specific Sub-type",
+    "title": "Brief Summary / Title",
+    "ward": "Municipal Ward",
+    "landmark": "Prominent Landmark",
+    "photo": "Photographic Evidence",
+    "description": "Detailed Problem Description",
+    "urgency": "Grievance Urgency Tier",
+    "submit": "Register Official Grievance"
   }
 }

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
+import { useTranslation } from 'react-i18next';
 import Alert from '../../components/common/Alert';
 import { useReports } from '../../hooks/useReports';
 import {
@@ -19,6 +20,7 @@ import { CIVIC_CATEGORIES } from '../../data/mockReports';
 export const ReportIssuePage = () => {
   const navigate = useNavigate();
   const { submitReport, currentUser } = useReports();
+  const { t } = useTranslation();
 
   // Form State
   const [formData, setFormData] = useState({
@@ -93,7 +95,7 @@ export const ReportIssuePage = () => {
 
   return (
     <div>
-      <Breadcrumbs items={[{ label: 'Citizen Services', to: '/services' }, { label: 'Report an Issue' }]} />
+      <Breadcrumbs items={[{ label: t('nav.services'), to: '/services' }, { label: t('nav.report') }]} />
 
       <div className="portal-container" style={{ paddingTop: '2rem' }}>
         {/* State Sync Notice */}
@@ -219,7 +221,7 @@ export const ReportIssuePage = () => {
                   {/* Category Selection */}
                   <div className="form-group">
                     <label className="form-label" htmlFor="cat-select">
-                      Civic Service Category <span className="required">*</span>
+                      {t('report.category')} <span className="required">*</span>
                     </label>
                     <select
                       id="cat-select"
@@ -240,7 +242,7 @@ export const ReportIssuePage = () => {
                   {/* Subcategory */}
                   <div className="form-group">
                     <label className="form-label" htmlFor="subcat-select">
-                      Problem Specific Sub-type <span className="required">*</span>
+                      {t('report.subcategory')} <span className="required">*</span>
                     </label>
                     <select
                       id="subcat-select"
@@ -261,7 +263,7 @@ export const ReportIssuePage = () => {
                   {/* Grievance Title */}
                   <div className="form-group">
                     <label className="form-label" htmlFor="title-input">
-                      Brief Summary / Title <span className="required">*</span>
+                      {t('report.title')} <span className="required">*</span>
                     </label>
                     <input
                       id="title-input"
@@ -279,7 +281,7 @@ export const ReportIssuePage = () => {
                   <div className="grid-2" style={{ gap: '1rem' }}>
                     <div className="form-group">
                       <label className="form-label" htmlFor="ward-select">
-                        Municipal Ward <span className="required">*</span>
+                        {t('report.ward')} <span className="required">*</span>
                       </label>
                       <select
                         id="ward-select"
@@ -298,9 +300,9 @@ export const ReportIssuePage = () => {
                     </div>
 
                     <div className="form-group">
-                      <label className="form-label" htmlFor="landmark-input">
-                        Prominent Landmark <span className="required">*</span>
-                      </label>
+                     <label className="form-label" htmlFor="landmark-input">
+  {t        ('report.landmark')} <span className="required">*</span>
+</label> 
                       <input
                         id="landmark-input"
                         type="text"
@@ -317,7 +319,7 @@ export const ReportIssuePage = () => {
                   {/* Photo Evidence Upload */}
                   <div className="form-group">
                     <label className="form-label">
-                      Photographic Evidence (Geotagged Photo Upload)
+                      {t('report.photo')}
                     </label>
                     <div
                       style={{
@@ -363,7 +365,7 @@ export const ReportIssuePage = () => {
                   {/* Description */}
                   <div className="form-group">
                     <label className="form-label" htmlFor="desc-input">
-                      Detailed Problem Description <span className="required">*</span>
+                      {t('report.description')} <span className="required">*</span>
                     </label>
                     <textarea
                       id="desc-input"
@@ -405,7 +407,7 @@ export const ReportIssuePage = () => {
                       disabled={isSubmitting}
                       icon={isSubmitting ? null : AlertCircle}
                     >
-                      {isSubmitting ? 'Registering Ticket...' : 'Register Official Grievance'}
+                      {isSubmitting ? 'Registering Ticket...' : t('report.submit')}
                     </Button>
                     <Button
                       variant="secondary"
