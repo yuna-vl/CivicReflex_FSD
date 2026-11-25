@@ -1,0 +1,17 @@
+{
+  "topbar": {
+    "skip": "skip to main content",
+    "font": "Font:",
+    "highContrast": "High Contrast",
+    "standardView": "Standard View"
+  },
+  "nav": {
+    "home": "Home",
+    "about": "About Us",
+    "services": "Citizen Services",
+    "report": "Report an Issue",
+    "blindSpots": "Blind Spots",
+    "track": "Track Complaint",
+    "notifications": "Notifications"
+  }
+}
