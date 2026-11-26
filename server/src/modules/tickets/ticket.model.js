@@ -192,6 +192,12 @@ const ticketSchema = new mongoose.Schema(
     timeline: {
       type: [timelineStageSchema],
       default: []
+    },
+
+    // Flag indicating seeded demo data
+    isSeed: {
+      type: Boolean,
+      default: false
     }
   },
   {

@@ -104,6 +104,12 @@ const userSchema = new mongoose.Schema(
 
     lockUntil: {
       type: Date
+    },
+
+    // Flag indicating seeded demo data
+    isSeed: {
+      type: Boolean,
+      default: false
     }
   },
   {

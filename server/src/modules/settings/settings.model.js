@@ -64,6 +64,11 @@ const settingsSchema = new mongoose.Schema(
     dailyDigestTime: {
       type: String,
       default: '08:00 AM'
+    },
+    // Flag indicating seeded demo data
+    isSeed: {
+      type: Boolean,
+      default: false
     }
   },
   {

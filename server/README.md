@@ -138,3 +138,31 @@ Bootstrap an administrator account without exposing passwords:
 ```bash
 npm run create-admin -- --email admin@civicreflex.gov.in --name "System Administrator" --password "YourStrongPasswordHere!"
 ```
+
+---
+
+## 🌱 Database Seeding (`npm run seed`)
+
+Populates the database with realistic municipal demo data, administrative configurations, and user accounts:
+
+```bash
+npm run seed
+```
+
+- **Safety:** Automatically aborts if `NODE_ENV === 'production'`.
+- **Idempotency:** Purges only documents flagged with `isSeed: true` before inserting, ensuring zero duplicate accumulation across repeated executions.
+- **Demo Accounts:**
+  - Citizen: `citizen@civicreflex.gov.in` (`citizen123`)
+  - Authority: `authority@civicreflex.gov.in` (`authority123`)
+  - Field Officer: `officer.pwd@civicreflex.gov.in` (`officer123`)
+  - Admin: `admin@civicreflex.gov.in` (`admin123`)
+- **Seeded Dataset:**
+  - 6 Administrative Wards and 5 Municipal Departments
+  - 8 Grievance & Illumination Categories
+  - Municipal Settings document
+  - 22 Users (including 10 active citizen reporters)
+  - 320 Reports & 320 Grievance Tickets spanning 12 lifecycle statuses
+  - 12 Overdue SLA tickets in Assigned/In Progress with past resolution dates
+  - 2 Geo-spatial Night-Time Illumination Clusters (6 reports within 150m in Ward 08, 3 reports within 150m in Ward 14)
+- **Sequence Counters:** Automatically synchronized to prevent future ID collision.
+
