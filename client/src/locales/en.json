@@ -37,6 +37,7 @@
   "howItWorks": "How CivicReflex Works",
   "categories": "Civic Issue Categories",
   "notifications": "Latest Notifications and Circulars",
+  "trackerDescription": "Enter the complaint number to check live status and resolution progress.",
   "transparency": "Public Transparency & Redressal Performance"
 },
   "track": {
