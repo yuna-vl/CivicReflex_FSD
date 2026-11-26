@@ -12,6 +12,7 @@ const Report = require('../reports/report.model');
 const { checkTransition } = require('../../constants/ticketTransitions');
 const { calculateExpectedResolutionDate } = require('../../constants/sla');
 const ApiError = require('../../utils/ApiError');
+const { safeEmit } = require('../../utils/events'); // announces events
 
 /**
  * Retrieves paginated tickets with filtering (newest first)
@@ -193,7 +194,13 @@ const applyStatusChange = async (ticketOrNumber, newStatus, actor, note) => {
   }
 
   // TODO: write an audit log entry here (feature/auth-admin)
-  // TODO: emit ticket.statusChanged event here
+    // Announce the status change (after everything is saved)
+  safeEmit('ticket.statusChanged', {
+    ticketNumber,
+    from: currentStatus,
+    to: newStatus,
+    by: actor.id
+  });
 
   return updatedTicket;
 };
@@ -287,16 +294,28 @@ const assignTicket = async (ticketNumber, assignData, actor) => {
       }
     );
 
+       safeEmit('ticket.assigned', {
+      ticketNumber: ticket.ticketNumber,
+      officerId: assignData.officerId
+    });
     return ticket;
   }
 
   // Otherwise, transition to Assigned status via applyStatusChange
-  return applyStatusChange(
+
+    const assignedTicket = await applyStatusChange(
     ticket,
     'Assigned',
     actor,
     assignData.directives || `Assigned to ${assignData.officerName} (${assignData.department})`
   );
+
+  safeEmit('ticket.assigned', {
+    ticketNumber: assignedTicket.ticketNumber,
+    officerId: assignData.officerId
+  });
+
+  return assignedTicket;
 };
 
 /**

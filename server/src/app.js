@@ -19,6 +19,10 @@ const errorHandler = require('./middleware/errorHandler');
 const reportsRouter = require('./modules/reports/reports.routes');
 const departmentsRouter = require('./modules/departments/departments.routes');
 const ticketsRouter = require('./modules/tickets/tickets.routes');
+const { registerLogListeners } = require('./events/logListeners');
+
+// Register terminal event logging listeners
+registerLogListeners();
 
 const app = express();
 

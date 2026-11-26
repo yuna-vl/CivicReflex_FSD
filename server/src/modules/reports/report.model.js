@@ -198,21 +198,40 @@ reportSchema.index({ wardNumber: 1, status: 1, reportedAt: -1 });
 // 3. Unique sparse index on idempotency key to prevent duplicate submissions
 reportSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 
-// Customize JSON representation: expose reportId as `id` and remove `__v`
-reportSchema.set('toJSON', {
-  transform: (doc, ret) => {
-    ret.id = ret.reportId;
-    delete ret.__v;
-    return ret;
+// Customize JSON representation: expose reportId as `id`, hide internal/system fields, and anonymize when requested
+const transformReport = (doc, ret) => {
+  ret.id = ret.reportId;
+  delete ret.__v;
+  delete ret.idempotencyKey;
+  delete ret.verifiedBy;
+
+  if (ret.isAnonymous) {
+    delete ret.createdBy;
+    if (typeof ret.latitude === 'number') {
+      ret.latitude = Math.round(ret.latitude * 100) / 100;
+    }
+    if (typeof ret.longitude === 'number') {
+      ret.longitude = Math.round(ret.longitude * 100) / 100;
+    }
+    if (ret.geo && Array.isArray(ret.geo.coordinates)) {
+      ret.geo = {
+        ...ret.geo,
+        coordinates: ret.geo.coordinates.map((c) =>
+          typeof c === 'number' ? Math.round(c * 100) / 100 : c
+        )
+      };
+    }
   }
+
+  return ret;
+};
+
+reportSchema.set('toJSON', {
+  transform: transformReport
 });
 
 reportSchema.set('toObject', {
-  transform: (doc, ret) => {
-    ret.id = ret.reportId;
-    delete ret.__v;
-    return ret;
-  }
+  transform: transformReport
 });
 
 const Report = mongoose.model('Report', reportSchema);

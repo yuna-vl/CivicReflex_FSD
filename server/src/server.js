@@ -10,6 +10,8 @@
 const app = require('./app');
 const { port } = require('./config/env');
 const connectDB = require('./config/db');
+require('./events/logListeners').registerLogListeners(); // prints event lines in the terminal
+
 
 /**
  * Initialize services and start HTTP server

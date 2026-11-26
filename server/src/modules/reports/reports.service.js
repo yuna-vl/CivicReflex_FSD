@@ -14,6 +14,8 @@ const Ticket = require('../tickets/ticket.model');
 const { nextSequence } = require('../../utils/counter');
 const { calculateExpectedResolutionDate } = require('../../constants/sla');
 const ApiError = require('../../utils/ApiError');
+const { safeEmit } = require('../../utils/events');
+const { parseBbox } = require('../../utils/bbox');
 
 /**
  * Escapes regex special characters to prevent ReDoS and regex syntax errors
@@ -173,6 +175,12 @@ const createReport = async (reportData, idempotencyKey) => {
     throw ticketError;
   }
 
+  // Announce report creation event
+  safeEmit('report.created', {
+    reportId: savedReport.reportId,
+    ticketNumber
+  });
+
   return { report: savedReport, isExisting: false };
 };
 
@@ -189,6 +197,7 @@ const getReports = async (queryParams) => {
     status,
     timeOfDay,
     search,
+    bbox,
     page: rawPage,
     limit: rawLimit
   } = queryParams;
@@ -208,6 +217,15 @@ const getReports = async (queryParams) => {
   if (category) filter.category = category;
   if (status) filter.status = status;
   if (timeOfDay) filter.timeOfDay = timeOfDay;
+
+  // Geospatial bounding box filter (west,south,east,north)
+  if (typeof bbox !== 'undefined') {
+    const { error, geoFilter } = parseBbox(bbox);
+    if (error) {
+      throw new ApiError(400, error);
+    }
+    filter.geo = geoFilter;
+  }
 
   // Text search on title or description (case-insensitive, regex-escaped)
   if (search && search.trim() !== '') {
@@ -271,6 +289,11 @@ const verifyReport = async (reportId, userId) => {
   );
 
   if (updatedReport) {
+    safeEmit('report.verified', {
+      reportId: updatedReport.reportId,
+      userId,
+      verifiedCount: updatedReport.verifiedCount
+    });
     return updatedReport;
   }
 
