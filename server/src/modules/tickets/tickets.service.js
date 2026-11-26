@@ -13,6 +13,7 @@ const { checkTransition } = require('../../constants/ticketTransitions');
 const { calculateExpectedResolutionDate } = require('../../constants/sla');
 const ApiError = require('../../utils/ApiError');
 const { safeEmit } = require('../../utils/events'); // announces events
+const { logAudit } = require('../audit/audit.service');
 
 /**
  * Retrieves paginated tickets with filtering (newest first)
@@ -193,8 +194,16 @@ const applyStatusChange = async (ticketOrNumber, newStatus, actor, note) => {
     );
   }
 
-  // TODO: write an audit log entry here (feature/auth-admin)
-    // Announce the status change (after everything is saved)
+  // Write audit trail entry
+  logAudit({
+    action: 'STATUS_CHANGED',
+    relatedRecord: ticketNumber,
+    user: `${actor.name} (${actor.id})`,
+    role: actor.role,
+    description: `Ticket status transitioned from ${currentStatus} to ${newStatus}${note ? ': ' + note : ''}`
+  });
+
+  // Announce the status change (after everything is saved)
   safeEmit('ticket.statusChanged', {
     ticketNumber,
     from: currentStatus,
@@ -313,6 +322,14 @@ const assignTicket = async (ticketNumber, assignData, actor) => {
   safeEmit('ticket.assigned', {
     ticketNumber: assignedTicket.ticketNumber,
     officerId: assignData.officerId
+  });
+
+  logAudit({
+    action: 'TICKET_ASSIGNED',
+    relatedRecord: assignedTicket.ticketNumber,
+    user: `${actor.name} (${actor.id})`,
+    role: actor.role,
+    description: `Ticket assigned to officer ${assignData.officerName} (${assignData.department})`
   });
 
   return assignedTicket;
@@ -438,11 +455,14 @@ const confirmTicket = async (ticketNumber, confirmData, actor) => {
     throw new ApiError(403, `Role '${actor.role}' cannot confirm or dispute tickets (citizen required)`);
   }
 
-  // TODO: check the citizen is the reporter once users exist
-
   const ticket = await Ticket.findOne({ ticketNumber: ticketNumber.toUpperCase() });
   if (!ticket) {
     throw new ApiError(404, `Ticket with number '${ticketNumber}' not found`);
+  }
+
+  // Ensure only the citizen who lodged the grievance can confirm or dispute
+  if (ticket.createdBy && ticket.createdBy !== actor.id) {
+    throw new ApiError(403, 'Only the citizen who lodged this grievance can confirm or dispute resolution');
   }
 
   if (ticket.currentStatus !== 'Resolved') {

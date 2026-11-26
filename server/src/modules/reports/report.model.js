@@ -171,10 +171,40 @@ const reportSchema = new mongoose.Schema(
       type: Date
     },
 
-    // User reference (optional, to be linked when authentication is added)
+    // User reference (creator userCode e.g. USR-1001)
     createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      type: String,
+      trim: true
+    },
+
+    // Moderation & Flagging (Part 4)
+    isFlagged: {
+      type: Boolean,
+      default: false
+    },
+    flagReason: {
+      type: String,
+      trim: true
+    },
+    moderationStatus: {
+      type: String,
+      enum: ['None', 'Pending', 'Approved', 'Rejected', 'Duplicate', 'Clarification Requested', 'Escalated'],
+      default: 'None'
+    },
+    moderationHistory: {
+      type: [
+        new mongoose.Schema(
+          {
+            action: { type: String, required: true },
+            by: { type: String, required: true },
+            reason: { type: String },
+            duplicateOf: { type: String },
+            at: { type: Date, default: Date.now }
+          },
+          { _id: false }
+        )
+      ],
+      default: []
     },
 
     // Client idempotency key for preventing duplicate submissions
@@ -199,9 +229,15 @@ reportSchema.index({ wardNumber: 1, status: 1, reportedAt: -1 });
 reportSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });
 
 // Customize JSON representation: expose reportId as `id`, hide internal/system fields, and anonymize when requested
-const transformReport = (doc, ret) => {
+const transformReport = (doc, ret, options) => {
   ret.id = ret.reportId;
   delete ret.__v;
+
+  // Authorities and admins can view unblurred data with full audit metadata
+  if (options && options.isAuthority) {
+    return ret;
+  }
+
   delete ret.idempotencyKey;
   delete ret.verifiedBy;
 

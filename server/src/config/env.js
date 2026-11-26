@@ -25,6 +25,12 @@ module.exports = {
   clientUrl: process.env.CLIENT_URL || 'http://localhost:5173',
 
   // Current runtime environment ('development', 'production', or 'test')
-  nodeEnv: process.env.NODE_ENV || 'development'
+  nodeEnv: process.env.NODE_ENV || 'development',
+
+  // JWT Configuration
+  jwtAccessSecret: process.env.JWT_ACCESS_SECRET || 'dev-access-secret-key-change-in-prod',
+  jwtRefreshSecret: process.env.JWT_REFRESH_SECRET || 'dev-refresh-secret-key-change-in-prod',
+  accessTtl: process.env.ACCESS_TTL || '15m',
+  refreshTtl: process.env.REFRESH_TTL || '7d'
 };
 

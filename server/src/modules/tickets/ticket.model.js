@@ -182,6 +182,12 @@ const ticketSchema = new mongoose.Schema(
       default: 0
     },
 
+    // Citizen creator userCode
+    createdBy: {
+      type: String,
+      trim: true
+    },
+
     // Six-stage structured progression lifecycle
     timeline: {
       type: [timelineStageSchema],

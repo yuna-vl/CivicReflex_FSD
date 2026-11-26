@@ -4,18 +4,19 @@ CivicReflex is a citizen-first civic issue reporting, pedestrian safety auditing
 
 ---
 
-## 🔐 Temporary Actor Authentication Headers
+## 🔐 Authentication & RBAC (Role-Based Access Control)
 
-Until full JWT authentication is implemented in `feature/auth-admin`, secured ticket endpoints authenticate caller identity using custom HTTP request headers:
+All secured endpoints authenticate the caller via JSON Web Tokens (JWT) passed in the standard `Authorization` header:
 
-| Header | Description | Allowed Values |
-| :--- | :--- | :--- |
-| `x-actor-role` | Operational caller role | `citizen`, `authority`, `field_officer`, `admin` |
-| `x-actor-id` | Unique ID of the caller | Non-empty string (e.g. `user_123`, `OFF-401`) |
-| `x-actor-name` | Full name of the caller | Non-empty string (e.g. `Jane Doe`, `R. K. Sharma`) |
+```http
+Authorization: Bearer <access_token>
+```
 
-> [!NOTE]
-> `admin` inherits all permissions granted to `authority`. If any actor header is missing or the role is invalid, the API returns **401 Unauthorized** with `{"success": false, "error": {"message": "Missing or invalid actor headers"}}`.
+### Supported User Roles
+- `citizen`: Can register, report civic grievances, view public reports, verify community reports, and confirm/dispute resolution on tickets they created.
+- `field_officer`: Can view assigned tickets, execute chronological site inspection workflows, upload photo evidence, and mark tickets as In Progress and Resolved.
+- `authority`: Can assign tickets to officers and departments, update SLA priorities, and oversee municipal operational resolution.
+- `admin`: Universal supervisor. Can do everything an authority can do, plus manage user accounts, suspend/reinstate users, oversee report moderation queues, configure wards/categories/settings, and audit cryptographic logs.
 
 ---
 
@@ -32,7 +33,7 @@ Tickets follow a strict state transition table:
 | **Assigned** | `Escalated`, `Assigned` (reassign) | Authority / Admin |
 | **In Progress** | `Resolved` | Field Officer (assigned officer only) |
 | **In Progress** | `Escalated` | Authority / Admin |
-| **Resolved** | `Citizen-Confirmed`, `Reopened - Under Investigation` | Citizen |
+| **Resolved** | `Citizen-Confirmed`, `Reopened - Under Investigation` | Citizen (ticket creator only) |
 | **Reopened - Under Investigation** | `Assigned` | Authority / Admin |
 | **Escalated** | `Assigned`, `Under Review` | Authority / Admin |
 | **Citizen-Confirmed** | *(None - terminal state)* | None |
@@ -41,201 +42,99 @@ Tickets follow a strict state transition table:
 
 ## ⏱️ Service Level Agreement (SLA) Thresholds
 
-Expected resolution dates are computed automatically from report submission time:
-- **Critical:** 24 Hours
-- **High:** 24 Hours
-- **Medium:** 48 Hours
-- **Low:** 120 Hours (5 Days)
+Resolution deadlines are calculated dynamically from settings configured in the portal:
+- **Critical / High:** Configured via `highSlaHours` (default 24h)
+- **Medium:** Configured via `mediumSlaHours` (default 48h)
+- **Low:** Configured via `lowSlaHours` (default 120h / 5 days)
+
+---
+
+## 🛡️ Tamper-Evident Audit Trail
+
+Every sensitive action records a cryptographically hashed block containing:
+`prevHash` (SHA-256 of the prior block) + block content $\rightarrow$ `hash`.
+Any modification or deletion of past records breaks the hash chain, immediately reported via `GET /api/admin/audit-logs/verify`.
 
 ---
 
 ## 📚 API Endpoints Catalog
 
-### 1. System Health
+### 1. Authentication API (`/api/auth`)
 
-#### `GET /health`
-- **Access:** Public
-- **Success Reply (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "status": "ok"
-  }
-}
-```
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | Public | Register new citizen account (password min 8 chars). |
+| `POST` | `/api/auth/login` | Public (Rate Limited) | Authenticate credentials; returns access & refresh tokens. |
+| `POST` | `/api/auth/refresh` | Public | Rotates refresh token and returns new token pair. Detects token reuse. |
+| `POST` | `/api/auth/logout` | Authenticated | Clears active refresh session. |
+| `GET` | `/api/auth/me` | Authenticated | Returns profile of authenticated user. |
+| `POST` | `/api/auth/change-password` | Authenticated | Change account password with current and new password. |
 
 ---
 
 ### 2. Reports API (`/api/reports`)
 
-#### `POST /api/reports`
-- **Access:** Public / Citizen
-- **Headers:** Optional `Idempotency-Key` for replay protection.
-- **Request Body:**
-```json
-{
-  "title": "Broken Streetlight on 2nd Main",
-  "category": "Street Lighting",
-  "subcategory": "Pole Damaged",
-  "description": "Entire stretch dark for two nights",
-  "wardNumber": "Ward 14",
-  "location": "2nd Main Road, Indiranagar",
-  "severity": "High",
-  "latitude": 12.9716,
-  "longitude": 77.5946
-}
-```
-- **Success Reply (201 Created):**
-```json
-{
-  "success": true,
-  "data": {
-    "reportId": "REP-2026-1001",
-    "ticketNumber": "CR-2026-9001",
-    "title": "Broken Streetlight on 2nd Main",
-    "status": "Reported",
-    "severity": "High",
-    "slaTargetDate": "2026-11-26T14:00:00.000Z",
-    "upvotes": 0,
-    "verifiedCount": 0,
-    "id": "REP-2026-1001"
-  }
-}
-```
-*(Idempotent retry with same `Idempotency-Key` returns 200 OK with the existing report)*.
-
-#### `GET /api/reports`
-- **Access:** Public
-- **Query Params:** `wardNumber`, `type`, `category`, `status`, `timeOfDay`, `search`, `page` (default 1), `limit` (default 20, max 50).
-- **Success Reply (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "items": [...],
-    "page": 1,
-    "limit": 20,
-    "total": 1
-  }
-}
-```
-
-#### `GET /api/reports/:id`
-- **Access:** Public
-- **Success Reply (200 OK):** Report object or **404 Not Found**.
-
-#### `POST /api/reports/:id/verify`
-- **Access:** Citizen
-- **Request Body:** `{ "userId": "usr_9982" }`
-- **Success Reply (200 OK):** Increments `verifiedCount` by 1 and records user.
-- **Error Reply (409 Conflict):** `{"success": false, "error": {"message": "You have already verified this report"}}`.
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/reports` | Authenticated | Lodge civic report. Links `createdBy` to caller. |
+| `GET` | `/api/reports` | Public | List reports. Supports `bbox` map search. Anonymous reports blurred for public, unblurred for authority. |
+| `GET` | `/api/reports/:id` | Public | Report details by reportId (e.g. `REP-2026-1001`). |
+| `POST` | `/api/reports/:id/verify` | Authenticated | Vote / verify report (1 vote per user). |
+| `POST` | `/api/reports/:id/flag` | Authenticated | Flag report with reason for moderation review. |
 
 ---
 
-### 3. Departments API (`/api/departments`)
+### 3. Tickets API (`/api/tickets`)
 
-#### `GET /api/departments`
-- **Access:** Public
-- **Success Reply (200 OK):** Array of departments sorted by name.
-
-#### `GET /api/departments/:code`
-- **Access:** Public
-- **Success Reply (200 OK):** Single department or **404 Not Found**.
-
-#### `POST /api/departments`
-- **Access:** Authority / Admin
-- **Request Body:**
-```json
-{
-  "name": "Public Works Department",
-  "code": "PWD-ROADS",
-  "nodalOfficer": "R. K. Sharma",
-  "officerCount": 24,
-  "budgetAllocated": "₹85,00,000",
-  "contactEmail": "pwd.roads@civicreflex.gov.in"
-}
-```
-- **Success Reply (201 Created):** Department object.
-- **Error Reply (409 Conflict):** If department code already exists.
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/tickets` | Authority / Admin / Officer | List tickets. Officers see only assigned; citizens receive 403. |
+| `GET` | `/api/tickets/:ticketNumber`| Public | Public grievance lookup by ticket number (e.g. `CR-2026-9001`). |
+| `PATCH`| `/api/tickets/:ticketNumber/status` | RBAC | Update lifecycle status per state machine. |
+| `POST` | `/api/tickets/:ticketNumber/assign` | Authority / Admin | Assign ticket to department and field officer. |
+| `POST` | `/api/tickets/:ticketNumber/inspection` | Field Officer | Execute inspection actions (start, remarks, mark in progress, photos, completion). |
+| `POST` | `/api/tickets/:ticketNumber/confirm` | Citizen (Creator) | Citizen confirms resolution or disputes (reopens). |
 
 ---
 
-### 4. Tickets API (`/api/tickets`)
+### 4. Admin Governance API (`/api/admin` - Admin Only)
 
-#### `GET /api/tickets`
-- **Access:** Authority / Admin / Field Officer
-- **Query Params:** `currentStatus`, `ward`, `category`, `assignedOfficerId`, `page` (default 1), `limit` (default 20, max 50).
-- **Success Reply (200 OK):** Paginated tickets sorted newest first.
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/admin/users` | List users with search, role filters, and sorting. |
+| `POST` | `/api/admin/users` | Create user of any role with credentials. |
+| `PATCH`| `/api/admin/users/:id/suspend` | Suspend user with reason (clears sessions, prevents login). |
+| `PATCH`| `/api/admin/users/:id/reinstate` | Restore suspended user to Active. |
+| `GET` | `/api/admin/audit-logs` | Query audit trail (`?format=csv` downloads CSV). |
+| `GET` | `/api/admin/audit-logs/verify` | Verifies SHA-256 chain integrity. |
+| `GET` | `/api/admin/moderation` | Moderation queue (`?view=queue` or `?view=history`). |
+| `POST` | `/api/admin/moderation/:reportId/decision` | Moderate report (`approve`, `reject`, `duplicate`, `clarify`, `escalate`). |
+| `GET` | `/api/admin/wards` | List wards with aggregate grievance resolution metrics. |
+| `POST` | `/api/admin/wards` | Create new municipal ward. |
+| `PATCH`| `/api/admin/wards/:wardNumber` | Update municipal ward. |
+| `PATCH`| `/api/admin/departments/:code` | Update municipal department details. |
+| `GET` | `/api/admin/categories` | List all grievance categories (active & inactive). |
+| `POST` | `/api/admin/categories` | Create new grievance category. |
+| `PATCH`| `/api/admin/categories/:id` | Update category details and SLA thresholds. |
+| `GET` | `/api/admin/settings` | Retrieve portal settings and SLA thresholds. |
+| `PUT` | `/api/admin/settings` | Update portal settings (updates live SLA thresholds). |
+| `GET` | `/api/admin/overview` | Platform overview counts (users, reports, tickets by status, moderation, wards). |
 
-#### `GET /api/tickets/:ticketNumber`
-- **Access:** Public Tracking
-- **Success Reply (200 OK):** Complete ticket document including 6-stage timeline and inspection data, or **404 Not Found**.
+---
 
-#### `PATCH /api/tickets/:ticketNumber/status`
-- **Access:** Actor role determined by the transition table
-- **Headers:** `x-actor-role`, `x-actor-id`, `x-actor-name`
-- **Request Body:**
-```json
-{
-  "status": "Under Review",
-  "note": "Awaiting engineer confirmation"
-}
+### 5. Categories API (`/api/categories`)
+
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/api/categories` | Public | Returns active grievance categories for report lodging forms. |
+
+---
+
+## 🛠️ Administrative CLI Tools
+
+### Create System Administrator
+Bootstrap an administrator account without exposing passwords:
+
+```bash
+npm run create-admin -- --email admin@civicreflex.gov.in --name "System Administrator" --password "YourStrongPasswordHere!"
 ```
-- **Success Reply (200 OK):** Updated ticket.
-- **Error Replies:**
-  - **403 Forbidden:** If role or ownership is not permitted.
-  - **409 Conflict:** If transition is invalid in lifecycle or concurrent modification occurred.
-
-#### `POST /api/tickets/:ticketNumber/assign`
-- **Access:** Authority / Admin
-- **Headers:** `x-actor-role: authority`, `x-actor-id`, `x-actor-name`
-- **Request Body:**
-```json
-{
-  "department": "Public Works Department",
-  "officerId": "OFF-101",
-  "officerName": "A. K. Verma",
-  "designation": "Assistant Executive Engineer",
-  "contact": "+91-9876543210",
-  "priority": "High",
-  "directives": "Inspect immediately and report within 24 hours"
-}
-```
-- **Success Reply (200 OK):** Assigned ticket with updated officer, authority, and SLA deadline.
-
-#### `POST /api/tickets/:ticketNumber/inspection`
-- **Access:** Field Officer (assigned officer only)
-- **Headers:** `x-actor-role: field_officer`, `x-actor-id: OFF-101`, `x-actor-name: A. K. Verma`
-- **Supported Actions:**
-  1. `start_inspection`: Sets `inspection.startedAt` (Status must be `Assigned`).
-  2. `submit_remarks`: Stores remarks (Inspection must be started).
-  3. `mark_in_progress`: Transitions `Assigned -> In Progress` (Inspection must be started).
-  4. `upload_before_photo`: Stores `beforePhotoUrl`.
-  5. `upload_after_photo`: Stores `afterPhotoUrl` (Status must be `In Progress`).
-  6. `submit_completion`: Transitions `In Progress -> Resolved`, sets `completedAt` (Requires `afterPhotoUrl`).
-- **Success Reply (200 OK):** Updated ticket document.
-- **Error Replies:**
-  - **403 Forbidden:** If caller is not the assigned officer.
-  - **409 Conflict:** If steps are executed out of chronological order.
-
-#### `POST /api/tickets/:ticketNumber/confirm`
-- **Access:** Citizen
-- **Headers:** `x-actor-role: citizen`, `x-actor-id`, `x-actor-name`
-- **Request Body (Confirm):**
-```json
-{
-  "decision": "confirm",
-  "comment": "Pothole filled and road surface restored smoothly."
-}
-```
-*(Moves status from `Resolved -> Citizen-Confirmed`)*.
-- **Request Body (Dispute):**
-```json
-{
-  "decision": "dispute",
-  "comment": "Rubble left on footpath, drain still blocked."
-}
-```
-*(Moves status from `Resolved -> Reopened - Under Investigation`)*.
-

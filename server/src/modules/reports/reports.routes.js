@@ -3,12 +3,14 @@
  * 
  * Purpose:
  * Express route definitions for the Reports API.
- * Maps endpoints to validation middleware and controller functions.
+ * Maps endpoints to JWT auth middleware, soft optionalAuth, Zod validators, and controller functions.
  */
 
 const express = require('express');
 const reportsController = require('./reports.controller');
-const { createReportSchema, verifyReportSchema } = require('./reports.validation');
+const { createReportSchema } = require('./reports.validation');
+const auth = require('../../middleware/auth');
+const optionalAuth = require('../../middleware/optionalAuth');
 
 const router = express.Router();
 
@@ -24,16 +26,17 @@ const validateBody = (schema) => (req, res, next) => {
   }
 };
 
-// TODO: protect with auth in feature/auth-admin
-router.post('/', validateBody(createReportSchema), reportsController.createReport);
+// Citizen lodged reports require authentication
+router.post('/', auth, validateBody(createReportSchema), reportsController.createReport);
 
-// TODO: protect with auth in feature/auth-admin
-router.get('/', reportsController.getReports);
+// Public query endpoints with optional auth for authority unblurred viewing
+router.get('/', optionalAuth, reportsController.getReports);
+router.get('/:id', optionalAuth, reportsController.getReportById);
 
-// TODO: protect with auth in feature/auth-admin
-router.get('/:id', reportsController.getReportById);
+// Citizen verification (requires login, uses authenticated user's userCode)
+router.post('/:id/verify', auth, reportsController.verifyReport);
 
-// TODO: replace body userId with req.user.id in feature/auth-admin
-router.post('/:id/verify', validateBody(verifyReportSchema), reportsController.verifyReport);
+// Citizen / user flagging (requires login, reason required)
+router.post('/:id/flag', auth, reportsController.flagReport);
 
 module.exports = router;

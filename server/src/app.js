@@ -4,10 +4,6 @@
  * Purpose:
  * Configures the Express application instance, registers essential security and
  * utility middleware, sets up API routes, and attaches error handling.
- * 
- * Keeping `app.js` separate from `server.js` is an industry best practice:
- * it allows testing API routes (e.g. using Supertest) without starting the HTTP server
- * or connecting to external databases.
  */
 
 const express = require('express');
@@ -16,6 +12,9 @@ const helmet = require('helmet');
 const { clientUrl } = require('./config/env');
 const ApiError = require('./utils/ApiError');
 const errorHandler = require('./middleware/errorHandler');
+const authRouter = require('./modules/auth/auth.routes');
+const adminRouter = require('./modules/admin/admin.routes');
+const categoriesRouter = require('./modules/categories/categories.routes');
 const reportsRouter = require('./modules/reports/reports.routes');
 const departmentsRouter = require('./modules/departments/departments.routes');
 const ticketsRouter = require('./modules/tickets/tickets.routes');
@@ -51,6 +50,9 @@ app.get('/health', (req, res) => {
 });
 
 // 5. API Routes
+app.use('/api/auth', authRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/categories', categoriesRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/departments', departmentsRouter);
 app.use('/api/tickets', ticketsRouter);
