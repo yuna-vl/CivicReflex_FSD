@@ -1,0 +1,34 @@
+name: Server Automated Tests
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - feature/backend-reports
+      - feature/auth-admin
+
+jobs:
+  test:
+    name: Run Jest Backend Test Suite
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install Server Dependencies
+        run: npm ci
+
+      - name: Execute Automated Tests
+        run: npm test
