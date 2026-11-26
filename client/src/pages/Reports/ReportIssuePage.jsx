@@ -301,7 +301,7 @@ export const ReportIssuePage = () => {
 
                     <div className="form-group">
                      <label className="form-label" htmlFor="landmark-input">
-  {t        ('report.landmark')} <span className="required">*</span>
+  {t('report.landmark')} <span className="required">*</span>
 </label> 
                       <input
                         id="landmark-input"
@@ -443,15 +443,15 @@ export const ReportIssuePage = () => {
                   <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.8125rem', lineHeight: 1.8 }}>
                     <li style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                       <CheckCircle2 size={16} color="var(--color-success-green)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                      <span>Take clear, well-lit photos showing both close-up damage and surrounding street context.</span>
+                      <span>{t('report.guidelines.photo')}</span>
                     </li>
                     <li style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                       <CheckCircle2 size={16} color="var(--color-success-green)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                      <span>Include landmark names (schools, banks, bus stops) to assist field inspection squads.</span>
+                      <span>{t('report.guidelines.landmark')}</span>
                     </li>
                     <li style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
                       <CheckCircle2 size={16} color="var(--color-success-green)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                      <span>Submitted reports instantly sync to your Citizen Dashboard and tracking log.</span>
+                      <span>{t('report.guidelines.sync')}</span>
                     </li>
                   </ul>
                 </Card.Body>
