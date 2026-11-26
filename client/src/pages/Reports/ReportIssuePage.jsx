@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState,useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Card from '../../components/common/Card';
@@ -15,7 +15,7 @@ import {
   Search
 } from 'lucide-react';
 import { CIVIC_CATEGORIES } from '../../data/mockReports';
-
+import { queueReport, flushQueue } from '../../utils/offlineQueue';
 export const ReportIssuePage = () => {
   const navigate = useNavigate();
   const { submitReport, currentUser } = useReports();
@@ -36,7 +36,19 @@ export const ReportIssuePage = () => {
   const [submittedTicket, setSubmittedTicket] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [photoPreview, setPhotoPreview] = useState(null);
+const [offlineSaved, setOfflineSaved] = useState(false);
 
+// Send saved offline reports when the connection returns
+useEffect(() => {
+  const sendQueued = () => {
+    flushQueue(async (item) => {
+      submitReport(item);
+    });
+  };
+  sendQueued();
+  window.addEventListener('online', sendQueued);
+  return () => window.removeEventListener('online', sendQueued);
+}, [submitReport]);
   const subcategories = {
     roads: ['Pothole Repair', 'Damaged Footpath Slab', 'Road Resurfacing Needed', 'Missing Manhole Cover'],
     sanitation: ['Garbage Dump Clearance', 'Secondary Bin Overflow', 'Dead Animal Removal', 'Debris Dumping'],
@@ -67,29 +79,40 @@ export const ReportIssuePage = () => {
   };
 
   const handleSubmit = (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  e.preventDefault();
 
-    // Commit to the shared frontend state layer
-    setTimeout(() => {
-      const result = submitReport({
-        category: formData.category,
-        subcategory: formData.subcategory,
-        title: formData.title,
-        description: formData.description,
-        ward: formData.ward,
-        landmark: formData.landmark,
-        severity: formData.severity,
-        citizenName: formData.citizenName,
-        citizenPhone: formData.citizenPhone,
-        photoUrl: photoPreview
-      });
-
-      setSubmittedTicket(result.ticket);
-      setIsSubmitting(false);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 400);
+  const payload = {
+    category: formData.category,
+    subcategory: formData.subcategory,
+    title: formData.title,
+    description: formData.description,
+    ward: formData.ward,
+    landmark: formData.landmark,
+    severity: formData.severity,
+    citizenName: formData.citizenName,
+    citizenPhone: formData.citizenPhone,
+    photoUrl: photoPreview
   };
+
+  // Offline: save on this device and send when the connection returns
+  if (!navigator.onLine) {
+    queueReport(payload);
+    setOfflineSaved(true);
+    setFormData((prev) => ({ ...prev, title: '', description: '', landmark: '' }));
+    setPhotoPreview(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    return;
+  }
+
+  setIsSubmitting(true);
+  setTimeout(() => {
+    const result = submitReport(payload);
+    setSubmittedTicket(result.ticket);
+    setOfflineSaved(false);
+    setIsSubmitting(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, 400);
+};
 
   return (
     <div>
@@ -100,6 +123,11 @@ export const ReportIssuePage = () => {
         <Alert type="info" title="Shared Frontend State Integration Active">
           Submissions automatically synchronize across your <strong>Citizen Dashboard</strong>, <strong>Complaint History</strong>, and the <strong>Tracking Engine</strong>, enabling immediate end-to-end verification.
         </Alert>
+        {offlineSaved && (
+  <Alert type="info" title="Saved Offline">
+    You are offline. Your report is saved on this device and will be sent automatically when you reconnect.
+  </Alert>
+)}
 
         {submittedTicket ? (
           /* Confirmation Success Card */
