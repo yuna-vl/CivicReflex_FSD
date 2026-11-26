@@ -7,6 +7,7 @@
  * department assignments, field inspections, and citizen resolution confirmation.
  */
 
+const mongoose = require('mongoose');
 const Ticket = require('./ticket.model');
 const Report = require('../reports/report.model');
 const { checkTransition } = require('../../constants/ticketTransitions');
@@ -15,19 +16,70 @@ const ApiError = require('../../utils/ApiError');
 const { safeEmit } = require('../../utils/events'); // announces events
 const { logAudit } = require('../audit/audit.service');
 
+// Cursor serialization helpers for Tickets
+const encodeTicketCursor = (item) => {
+  if (!item) return null;
+  const dateStr = item.submissionDate instanceof Date
+    ? item.submissionDate.toISOString()
+    : new Date(item.submissionDate || item.createdAt).toISOString();
+  const idStr = item._id ? item._id.toString() : '';
+  return Buffer.from(`${dateStr}|${idStr}`).toString('base64');
+};
+
+const decodeTicketCursor = (cursorStr) => {
+  if (!cursorStr || typeof cursorStr !== 'string') return null;
+  try {
+    const raw = Buffer.from(cursorStr, 'base64').toString('utf8');
+    const [dateStr, idStr] = raw.split('|');
+    if (!dateStr || !idStr) return null;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return { date, id: idStr };
+  } catch (err) {
+    return null;
+  }
+};
+
+// Optimized list-view fields projection (excludes heavy timeline & inspection arrays)
+const TICKET_LIST_PROJECTION = {
+  ticketNumber: 1,
+  reportIds: 1,
+  source: 1,
+  currentStatus: 1,
+  urgencyLevel: 1,
+  ward: 1,
+  category: 1,
+  issueType: 1,
+  subject: 1,
+  address: 1,
+  submissionDate: 1,
+  expectedResolutionDate: 1,
+  assignedOfficerId: 1,
+  assignedAuthority: 1,
+  priorityScore: 1,
+  createdBy: 1,
+  createdAt: 1,
+  updatedAt: 1
+};
+
 /**
- * Retrieves paginated tickets with filtering (newest first)
- * @param {Object} queryParams - Filters (currentStatus, ward, category, assignedOfficerId, page, limit)
- * @returns {Promise<{ items: Array, page: number, limit: number, total: number }>}
+ * Retrieves paginated tickets with filtering, cursor/page pagination, and lean projections (newest first)
+ * @param {Object} queryParams - Filters (currentStatus, ward, category, assignedOfficerId, cursor, page, limit)
+ * @returns {Promise<{ items: Array, nextCursor: string|null, page: number, limit: number, total: number }>}
  */
 const getTickets = async (queryParams) => {
-  const { currentStatus, ward, category, assignedOfficerId, page: rawPage, limit: rawLimit } = queryParams;
+  const {
+    currentStatus,
+    ward,
+    category,
+    assignedOfficerId,
+    cursor,
+    page: rawPage,
+    limit: rawLimit
+  } = queryParams;
 
-  const parsedPage = parseInt(rawPage, 10);
   const parsedLimit = parseInt(rawLimit, 10);
-  const page = !isNaN(parsedPage) && parsedPage > 0 ? parsedPage : 1;
   const limit = !isNaN(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 20;
-  const skip = (page - 1) * limit;
 
   const filter = {};
   if (currentStatus) filter.currentStatus = currentStatus;
@@ -35,13 +87,52 @@ const getTickets = async (queryParams) => {
   if (category) filter.category = category;
   if (assignedOfficerId) filter.assignedOfficerId = assignedOfficerId;
 
-  const [items, total] = await Promise.all([
-    Ticket.find(filter).sort({ submissionDate: -1, createdAt: -1 }).skip(skip).limit(limit),
+  let queryFilter = filter;
+  let useCursor = false;
+
+  if (cursor) {
+    const decoded = decodeTicketCursor(cursor);
+    if (decoded && mongoose.Types.ObjectId.isValid(decoded.id)) {
+      useCursor = true;
+      const cursorCondition = {
+        $or: [
+          { submissionDate: { $lt: decoded.date } },
+          { submissionDate: decoded.date, _id: { $lt: new mongoose.Types.ObjectId(decoded.id) } }
+        ]
+      };
+      queryFilter = Object.keys(filter).length > 0
+        ? { $and: [filter, cursorCondition] }
+        : cursorCondition;
+    }
+  }
+
+  const parsedPage = parseInt(rawPage, 10);
+  const page = !isNaN(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const skip = useCursor ? 0 : (page - 1) * limit;
+
+  const [rawItems, total] = await Promise.all([
+    Ticket.find(queryFilter)
+      .select(TICKET_LIST_PROJECTION)
+      .sort({ submissionDate: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit + 1)
+      .lean(),
     Ticket.countDocuments(filter)
   ]);
 
+  const hasMore = rawItems.length > limit;
+  const itemsSlice = hasMore ? rawItems.slice(0, limit) : rawItems;
+  const nextCursor = hasMore ? encodeTicketCursor(itemsSlice[itemsSlice.length - 1]) : null;
+
+  const formattedItems = itemsSlice.map((item) => {
+    const ret = { ...item, id: item._id };
+    delete ret.__v;
+    return ret;
+  });
+
   return {
-    items,
+    items: formattedItems,
+    nextCursor,
     page,
     limit,
     total

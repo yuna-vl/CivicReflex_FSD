@@ -15,6 +15,11 @@ const { mongoUri } = require('./env');
  * @returns {Promise<void>}
  */
 const connectDB = async () => {
+  // If connection is already open, reuse existing active connection
+  if (mongoose.connection.readyState === 1) {
+    return;
+  }
+
   // Validate that a connection URI has been provided
   if (!mongoUri || mongoUri.trim() === '') {
     throw new Error(

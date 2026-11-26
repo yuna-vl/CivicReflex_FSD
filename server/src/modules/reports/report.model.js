@@ -229,7 +229,8 @@ const reportSchema = new mongoose.Schema(
 reportSchema.index({ geo: '2dsphere' });
 
 // 2. Compound index for common query filtering and sorting
-reportSchema.index({ wardNumber: 1, status: 1, reportedAt: -1 });
+reportSchema.index({ wardNumber: 1, status: 1, reportedAt: -1, _id: -1 });
+reportSchema.index({ reportedAt: -1, _id: -1 });
 
 // 3. Unique sparse index on idempotency key to prevent duplicate submissions
 reportSchema.index({ idempotencyKey: 1 }, { unique: true, sparse: true });

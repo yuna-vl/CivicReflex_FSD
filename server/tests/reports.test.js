@@ -122,4 +122,41 @@ describe('Reports API Automated Test Suite', () => {
       expect(verifyRes2.body.error.message).toMatch(/already verified/i);
     });
   });
+
+  describe('GET /api/reports (Cursor Pagination & Lean Projections)', () => {
+    it('supports cursor pagination returning items and nextCursor', async () => {
+      // Create 3 reports
+      for (let i = 1; i <= 3; i++) {
+        await request(app)
+          .post('/api/reports')
+          .set('Authorization', `Bearer ${citizen.token}`)
+          .send({
+            title: `Report number ${i}`,
+            category: 'Road Damage / Potholes',
+            description: `Description for report ${i}`,
+            wardNumber: 'Ward 14'
+          })
+          .expect(201);
+      }
+
+      // Query page 1 with limit 2
+      const resPage1 = await request(app)
+        .get('/api/reports?limit=2')
+        .expect(200);
+
+      expect(resPage1.body.success).toBe(true);
+      expect(resPage1.body.data.items).toHaveLength(2);
+      expect(resPage1.body.data.nextCursor).toBeDefined();
+      expect(resPage1.body.data.nextCursor).not.toBeNull();
+
+      // Query page 2 using nextCursor
+      const resPage2 = await request(app)
+        .get(`/api/reports?limit=2&cursor=${resPage1.body.data.nextCursor}`)
+        .expect(200);
+
+      expect(resPage2.body.success).toBe(true);
+      expect(resPage2.body.data.items).toHaveLength(1);
+      expect(resPage2.body.data.items[0].reportId).not.toBe(resPage1.body.data.items[0].reportId);
+    });
+  });
 });

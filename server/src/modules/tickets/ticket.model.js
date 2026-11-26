@@ -206,7 +206,8 @@ const ticketSchema = new mongoose.Schema(
 );
 
 // Indexes
-ticketSchema.index({ currentStatus: 1, ward: 1 });
+ticketSchema.index({ currentStatus: 1, ward: 1, submissionDate: -1, _id: -1 });
+ticketSchema.index({ submissionDate: -1, _id: -1 });
 
 // Clean JSON serialization
 ticketSchema.set('toJSON', {

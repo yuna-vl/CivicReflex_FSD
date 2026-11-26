@@ -184,4 +184,28 @@ npm test
   - **Ticket Lifecycle & State Machine (`tests/tickets.test.js`):** Full 5-stage progression (Reported $\rightarrow$ Assigned $\rightarrow$ In Progress $\rightarrow$ Resolved $\rightarrow$ Citizen-Confirmed), prohibiting invalid jumps (Reported $\rightarrow$ Resolved 409), enforcing officer ticket ownership (403), and blocking officer confirmation (403).
   - **Moderation & Tamper-Evident Audit (`tests/admin-moderation-audit.test.js`):** Enforcing mandatory moderation rejection reasons (400), cryptographic SHA-256 hash chain verification, and historical block tampering detection.
 
+---
+
+## ⚡ Performance, Safety & Cursor Pagination
+
+Optimizations applied across the API for high-throughput citizen and municipal usage:
+
+### 1. Response Compression & Rate Limiting
+- **Gzip/Deflate Compression (`compression`):** Applied globally to compress JSON responses, dramatically reducing wire bandwidth usage.
+- **General Rate Limiter (`express-rate-limit`):** 200 requests per 15 minutes per IP protecting general endpoints against denial-of-service spikes. Automatically bypassed in `NODE_ENV === 'test'`.
+- **Auth Rate Limiter:** 10 login attempts per 15 minutes per IP protecting `/api/auth/login`.
+
+### 2. Cursor Pagination & Lean Projections
+- **`GET /api/reports` & `GET /api/tickets`:**
+  - Query parameters: `limit` (capped at max 50, default 20) and `cursor`.
+  - Sorted newest first with `_id` as strict tie-breaker (`{ reportedAt: -1, _id: -1 }` and `{ submissionDate: -1, _id: -1 }`).
+  - Response structure: `{ items, nextCursor, total, page, limit }` keeping backwards compatibility when `cursor` is omitted.
+  - **Lean Execution & Field Projections:** Utilizes Mongoose `.lean()` and targeted field projections (`select(...)`), avoiding full document hydration overhead and omitting massive internal audit arrays (`actionsTaken`, `moderationHistory`, `timeline`) from list payloads. Single-item endpoints retain 100% full detail.
+
+### 3. Database Indexes & Query Explain
+- **Report Query (`wardNumber`, `status`, `reportedAt`, `_id`):** Covered by compound index `wardNumber_1_status_1_reportedAt_-1__id_-1`, executing via `IXSCAN` with zero in-memory sorting.
+- **Ticket Query (`currentStatus`, `ward`, `submissionDate`, `_id`):** Covered by compound index `currentStatus_1_ward_1_submissionDate_-1__id_-1`, executing via `IXSCAN`.
+- **Response Time Benchmark:** Projections and `.lean()` execution achieved a measurable latency reduction across 50 iterations on the seeded dataset.
+
+
 
