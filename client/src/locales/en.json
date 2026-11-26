@@ -38,5 +38,26 @@
   "categories": "Civic Issue Categories",
   "notifications": "Latest Notifications and Circulars",
   "transparency": "Public Transparency & Redressal Performance"
-}
+},
+  "track": {
+    "title": "Track Your Complaint",
+    "realtime": "Real-time Redressal Engine",
+    "search": "Search",
+    "placeholder": "Enter complaint number (e.g. CR-2026-8842)",
+    "quickSelect": "Quick Select Grievance:",
+    "sla": "Statutory Resolution SLA Target:",
+    "officer": "Assigned Field Officer",
+    "department": "Department Division",
+    "verification": "Citizen Verification Status",
+    "endorsements": "Ward Citizen Endorsements",
+    "minVotes": "Minimum 3 votes needed for official sign-off",
+    "timeline": "Multi-Stage Redressal Timeline",
+    "desk": "Responsible Desk",
+    "verifyBtn": "Verify Remediation",
+    "verified": "Verified by You",
+    "protocol": "Community Verification Protocol",
+    "confirm": "Confirm Resolution (Sign-Off)",
+    "dispute": "Dispute & Reopen",
+    "myDashboard": "My Dashboard"
+  }
 }

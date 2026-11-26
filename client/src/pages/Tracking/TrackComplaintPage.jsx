@@ -82,7 +82,7 @@ const { t } = useTranslation();
               icon={LayoutDashboard}
               onClick={() => navigate('/dashboard')}
             >
-              {t('track.dashboard')}
+              {t('track.myDashboard')}
             </Button>
             <Badge variant="navy">{t('track.realTimeRedressal')}</Badge>
           </div>
@@ -117,7 +117,7 @@ const { t } = useTranslation();
 
           {/* Quick links to user's complaints and demo tickets */}
           <div style={{ marginTop: '0.75rem', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-            <strong>Quick Select Grievance: </strong>
+            <strong>{t('track.quickSelect')}</strong>
             {userReports.map((r, index) => (
               <React.Fragment key={r.ticketNumber}>
                 {index > 0 && <span> • </span>}
