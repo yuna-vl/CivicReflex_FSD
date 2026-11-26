@@ -166,3 +166,22 @@ npm run seed
   - 2 Geo-spatial Night-Time Illumination Clusters (6 reports within 150m in Ward 08, 3 reports within 150m in Ward 14)
 - **Sequence Counters:** Automatically synchronized to prevent future ID collision.
 
+---
+
+## 🧪 Automated Testing (`npm test`)
+
+The backend includes a comprehensive Jest test suite powered by `supertest` and an isolated in-memory MongoDB server (`mongodb-memory-server`):
+
+```bash
+npm test
+```
+
+- **Airtight Safety Guard:** The test runner strictly verifies that `MONGO_URI` never points to remote MongoDB Atlas (`mongodb.net`) and immediately aborts if remote connection strings are detected.
+- **Scope & Isolation:** Scoped strictly to `server/tests/**/*.test.js`, preventing any execution of manual developer scripts. All collections are purged between individual test cases.
+- **Coverage Areas:**
+  - **Authentication & RBAC (`tests/auth.test.js`):** Citizen registration, login validation, credential rejections (wrong password, account suspension), unauthenticated 401 gates, and unauthorized 403 role restrictions.
+  - **Reports Validation (`tests/reports.test.js`):** Stripping client-controlled status/upvote fields, idempotency key deduplication, and single-vote citizen verification logic (409 on duplicate).
+  - **Ticket Lifecycle & State Machine (`tests/tickets.test.js`):** Full 5-stage progression (Reported $\rightarrow$ Assigned $\rightarrow$ In Progress $\rightarrow$ Resolved $\rightarrow$ Citizen-Confirmed), prohibiting invalid jumps (Reported $\rightarrow$ Resolved 409), enforcing officer ticket ownership (403), and blocking officer confirmation (403).
+  - **Moderation & Tamper-Evident Audit (`tests/admin-moderation-audit.test.js`):** Enforcing mandatory moderation rejection reasons (400), cryptographic SHA-256 hash chain verification, and historical block tampering detection.
+
+
