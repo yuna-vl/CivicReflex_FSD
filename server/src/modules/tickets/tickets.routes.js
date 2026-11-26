@@ -3,12 +3,13 @@
  * 
  * Purpose:
  * Express route definitions for the Tickets API.
- * Maps endpoints to actor validation middleware, Zod payload validators, and controller functions.
+ * Maps endpoints to JWT auth middleware, RBAC checks, Zod payload validators, and controller functions.
  */
 
 const express = require('express');
 const ticketsController = require('./tickets.controller');
-const actorMiddleware = require('../../middleware/actor');
+const auth = require('../../middleware/auth');
+const requireRole = require('../../middleware/requireRole');
 const {
   updateStatusSchema,
   assignTicketSchema,
@@ -30,8 +31,8 @@ const validateBody = (schema) => (req, res, next) => {
   }
 };
 
-// TODO: authority/admin only; field officers see only their own tickets (feature/auth-admin)
-router.get('/', ticketsController.getTickets);
+// Authority/admin see all, field_officer sees only assigned, citizen gets 403
+router.get('/', auth, ticketsController.getTickets);
 
 // Public tracking by ticket number (e.g. CR-2026-9001)
 router.get('/:ticketNumber', ticketsController.getTicketByNumber);
@@ -39,15 +40,16 @@ router.get('/:ticketNumber', ticketsController.getTicketByNumber);
 // Status update via state transition table
 router.patch(
   '/:ticketNumber/status',
-  actorMiddleware,
+  auth,
   validateBody(updateStatusSchema),
   ticketsController.updateStatus
 );
 
-// Department & officer assignment (authority / admin)
+// Department & officer assignment (authority / admin only)
 router.post(
   '/:ticketNumber/assign',
-  actorMiddleware,
+  auth,
+  requireRole('authority', 'admin'),
   validateBody(assignTicketSchema),
   ticketsController.assignTicket
 );
@@ -55,7 +57,8 @@ router.post(
 // Field officer inspection actions (start, remarks, mark in progress, photos, completion)
 router.post(
   '/:ticketNumber/inspection',
-  actorMiddleware,
+  auth,
+  requireRole('field_officer'),
   validateBody(inspectionActionSchema),
   ticketsController.inspectionAction
 );
@@ -63,7 +66,8 @@ router.post(
 // Citizen verification confirmation or dispute
 router.post(
   '/:ticketNumber/confirm',
-  actorMiddleware,
+  auth,
+  requireRole('citizen'),
   validateBody(confirmTicketSchema),
   ticketsController.confirmTicket
 );

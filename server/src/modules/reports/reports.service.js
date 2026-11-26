@@ -16,6 +16,8 @@ const { calculateExpectedResolutionDate } = require('../../constants/sla');
 const ApiError = require('../../utils/ApiError');
 const { safeEmit } = require('../../utils/events');
 const { parseBbox } = require('../../utils/bbox');
+const { logAudit } = require('../audit/audit.service');
+const mongoose = require('mongoose');
 
 /**
  * Escapes regex special characters to prevent ReDoS and regex syntax errors
@@ -33,10 +35,23 @@ const escapeRegex = (text) => {
  * 
  * @param {Object} reportData - Validated payload (sanitized by Zod)
  * @param {string} [idempotencyKey] - Client idempotency key taken strictly from header
+ * @param {Object} [user] - Authenticated user creating the report
  * @returns {Promise<{ report: Object, isExisting: boolean }>}
  */
-const createReport = async (reportData, idempotencyKey) => {
+const createReport = async (reportData, idempotencyKey, user) => {
   const key = idempotencyKey && typeof idempotencyKey === 'string' ? idempotencyKey.trim() : undefined;
+
+  // Check Category status if categories exist in DB (Part 4)
+  const Category = mongoose.models.Category;
+  if (Category) {
+    const catCount = await Category.countDocuments();
+    if (catCount > 0) {
+      const activeCat = await Category.findOne({ name: reportData.category, status: 'Active' });
+      if (!activeCat) {
+        throw new ApiError(400, `Category '${reportData.category}' is invalid or inactive`);
+      }
+    }
+  }
 
   // 1. Idempotency Check: return existing report if previously created with this key
   if (key) {
@@ -93,7 +108,8 @@ const createReport = async (reportData, idempotencyKey) => {
     verifiedBy: [],
     reportedAt: now,
     slaTargetDate: expectedResolutionDate,
-    idempotencyKey: key || undefined
+    idempotencyKey: key || undefined,
+    createdBy: user ? user.userCode : undefined
   });
 
   const savedReport = await newReport.save();
@@ -165,6 +181,7 @@ const createReport = async (reportData, idempotencyKey) => {
       submissionDate: now,
       expectedResolutionDate,
       priorityScore: 0,
+      createdBy: user ? user.userCode : undefined,
       timeline
     });
 
@@ -174,6 +191,15 @@ const createReport = async (reportData, idempotencyKey) => {
     await Report.findByIdAndDelete(savedReport._id);
     throw ticketError;
   }
+
+  // Audit trail logging
+  logAudit({
+    action: 'GRIEVANCE_LODGED',
+    relatedRecord: savedReport.reportId,
+    user: user ? `${user.name} (${user.userCode})` : 'System',
+    role: user ? user.role : 'citizen',
+    description: `Grievance registered: "${savedReport.title}" (${savedReport.ticketNumber})`
+  });
 
   // Announce report creation event
   safeEmit('report.created', {
@@ -187,9 +213,10 @@ const createReport = async (reportData, idempotencyKey) => {
 /**
  * Queries reports with filters, text search, and pagination (newest first)
  * @param {Object} queryParams
+ * @param {boolean} [isAuthority=false]
  * @returns {Promise<{ items: Array, page: number, limit: number, total: number }>}
  */
-const getReports = async (queryParams) => {
+const getReports = async (queryParams, isAuthority = false) => {
   const {
     wardNumber,
     type,
@@ -239,8 +266,10 @@ const getReports = async (queryParams) => {
     Report.countDocuments(filter)
   ]);
 
+  const formattedItems = isAuthority ? items.map((doc) => doc.toJSON({ isAuthority: true })) : items;
+
   return {
-    items,
+    items: formattedItems,
     page,
     limit,
     total
@@ -250,13 +279,41 @@ const getReports = async (queryParams) => {
 /**
  * Finds a single report by its unique reportId
  * @param {string} reportId
+ * @param {boolean} [isAuthority=false]
  * @returns {Promise<Object>}
  */
-const getReportById = async (reportId) => {
+const getReportById = async (reportId, isAuthority = false) => {
   const report = await Report.findOne({ reportId });
   if (!report) {
     throw new ApiError(404, `Report with ID '${reportId}' not found`);
   }
+  return isAuthority ? report.toJSON({ isAuthority: true }) : report;
+};
+
+/**
+ * Marks a report as flagged for moderation
+ * @param {string} reportId
+ * @param {string} reason
+ * @param {Object} user
+ * @returns {Promise<Object>}
+ */
+const flagReport = async (reportId, reason, user) => {
+  const report = await Report.findOne({ reportId });
+  if (!report) {
+    throw new ApiError(404, `Report with ID '${reportId}' not found`);
+  }
+
+  report.isFlagged = true;
+  report.flagReason = reason;
+  report.moderationStatus = 'Pending';
+  report.moderationHistory.push({
+    action: 'flagged',
+    by: `${user.name} (${user.userCode})`,
+    reason,
+    at: new Date()
+  });
+
+  await report.save();
   return report;
 };
 
@@ -310,5 +367,6 @@ module.exports = {
   createReport,
   getReports,
   getReportById,
-  verifyReport
+  verifyReport,
+  flagReport
 };
