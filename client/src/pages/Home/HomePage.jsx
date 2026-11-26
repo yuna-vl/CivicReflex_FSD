@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertCircle,
@@ -32,6 +33,7 @@ import { useReports } from '../../hooks/useReports';
 export const HomePage = () => {
   const navigate = useNavigate();
   const { getTicket, userReports } = useReports();
+  const { t } = useTranslation();
   const [quickTicketId, setQuickTicketId] = useState('');
   const [quickResult, setQuickResult] = useState(null);
   const [quickError, setQuickError] = useState('');
@@ -183,7 +185,7 @@ export const HomePage = () => {
                   marginBottom: '1rem'
                 }}
               >
-                <span>National Civic Accountability Initiative</span>
+                <span>{t('home.badge')}</span>
                 <span>•</span>
                 <span>Academic FSD Prototype</span>
               </div>
@@ -198,7 +200,7 @@ export const HomePage = () => {
                   marginBottom: '1rem'
                 }}
               >
-                Direct Civic Grievance Redressal & Pedestrian Safety Audit
+                {t('home.heroTitle')}
               </h2>
 
               <p
@@ -210,7 +212,7 @@ export const HomePage = () => {
                   maxWidth: '580px'
                 }}
               >
-                CivicReflex bridges citizens with municipal engineers to resolve road potholes, garbage accumulation, unlit streets, and inaccessible urban walkways through time-bound Service Level Agreements (SLAs) and mandatory public verification.
+                {t('home.heroDescription')}
               </p>
 
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -220,7 +222,7 @@ export const HomePage = () => {
                   icon={AlertCircle}
                   onClick={() => navigate('/report')}
                 >
-                  File a Grievance Now
+                  {t('home.reportIssue')}
                 </Button>
 
                 <Button
@@ -230,7 +232,7 @@ export const HomePage = () => {
                   onClick={() => navigate('/blind-spots')}
                   style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: '#FFFFFF', borderColor: '#4A5568' }}
                 >
-                  Audit Blind Spots
+                  {t('home.auditBlindSpots')}
                 </Button>
               </div>
             </div>
@@ -250,17 +252,17 @@ export const HomePage = () => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
                   <Search size={20} color="var(--color-gov-blue)" />
                   <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', margin: 0, color: 'var(--color-primary-navy)' }}>
-                    Quick Grievance Tracker
+                    {t('home.trackerTitle')}
                   </h3>
                 </div>
                 <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginBottom: '1rem' }}>
-                  Enter your 10-digit Ticket ID to inspect live progress, assigned field engineer, and resolution evidence.
+                  {t('home.trackerDescription')}
                 </p>
 
                 <form onSubmit={handleQuickTrack}>
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
                     <label htmlFor="quick-ticket-input" className="form-label">
-                      Complaint / Ticket Number:
+                      {t('home.ticketLabel')}
                     </label>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
                       <input
@@ -411,7 +413,7 @@ export const HomePage = () => {
       <section style={{ padding: '2.5rem 0', backgroundColor: 'var(--color-background)' }}>
         <div className="portal-container">
           <div className="section-heading">
-            <span>Citizen Quick Services</span>
+            <span>{t('home.quickServices')}</span>
             <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
               Official Citizen Services Directory
             </span>
@@ -607,7 +609,7 @@ export const HomePage = () => {
       <section style={{ padding: '2.5rem 0', backgroundColor: '#FFFFFF', borderTop: '1px solid var(--color-border)', borderBottom: '1px solid var(--color-border)' }}>
         <div className="portal-container">
           <div className="section-heading">
-            <span>How CivicReflex Works</span>
+            <span></span>
             <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontWeight: 500 }}>
               Four-Step Accountable Governance Workflow
             </span>
@@ -663,7 +665,7 @@ export const HomePage = () => {
       <section style={{ padding: '2.5rem 0', backgroundColor: 'var(--color-background)' }}>
         <div className="portal-container">
           <div className="section-heading">
-            <span>Civic Issue Categories</span>
+            <span></span>
             <Link to="/report" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
               Report in Any Category ›
             </Link>
@@ -785,7 +787,7 @@ export const HomePage = () => {
       <section style={{ padding: '2.5rem 0', backgroundColor: '#FFFFFF', borderBottom: '1px solid var(--color-border)' }}>
         <div className="portal-container">
           <div className="section-heading">
-            <span>Latest Notifications and Circulars</span>
+            <span></span>
             <Link to="/notifications" style={{ fontSize: '0.875rem', fontWeight: 600 }}>
               View Complete Gazette Archive ›
             </Link>
@@ -838,7 +840,7 @@ export const HomePage = () => {
       <section style={{ padding: '2.5rem 0', backgroundColor: 'var(--color-background)' }}>
         <div className="portal-container">
           <div className="section-heading">
-            <span>Public Transparency & Redressal Performance</span>
+            <span>{t('home.transparency')}</span>
             <Badge variant="navy">Demo Accountability Metrics</Badge>
           </div>
 

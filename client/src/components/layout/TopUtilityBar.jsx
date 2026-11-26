@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAccessibility } from '../../context/AccessibilityContext';
 import { Eye, Volume2, Globe, ChevronDown, Check } from 'lucide-react';
-
+import { useTranslation } from 'react-i18next';
 const LANGUAGES = [
   { code: 'en', label: 'English', native: 'English' },
   { code: 'hi', label: 'Hindi', native: 'हिन्दी' },
@@ -12,6 +12,7 @@ const LANGUAGES = [
 ];
 
 export const TopUtilityBar = () => {
+  const { t } = useTranslation();
   const { fontSize, setFontSize, highContrast, toggleHighContrast, language, changeLanguage } = useAccessibility();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const langDropdownRef = useRef(null);
@@ -75,7 +76,7 @@ export const TopUtilityBar = () => {
             }}
           >
             <Volume2 size={13} aria-hidden="true" />
-            <span>Skip to Main Content</span>
+            <span>{t('topbar.skip')}</span>
           </a>
 
           <span style={{ color: '#334155' }}>|</span>

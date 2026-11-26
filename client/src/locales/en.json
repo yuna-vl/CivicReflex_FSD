@@ -1,0 +1,42 @@
+{
+  "topbar": {
+    "skip": "Skip to Main Content",
+    "font": "Font:",
+    "highContrast": "High Contrast",
+    "standardView": "Standard View"
+  },
+  "nav": {
+    "home": "Home",
+    "about": "About Us",
+    "services": "Citizen Services",
+    "report": "Report an Issue",
+    "blindSpots": "Blind Spots",
+    "track": "Track Complaint",
+    "notifications": "Notifications"
+  },
+  "report": {
+    "category": "Civic Service Category",
+    "subcategory": "Problem Specific Sub-type",
+    "title": "Brief Summary / Title",
+    "ward": "Municipal Ward",
+    "landmark": "Prominent Landmark",
+    "photo": "Photographic Evidence",
+    "description": "Detailed Problem Description",
+    "urgency": "Grievance Urgency Tier",
+    "submit": "Register Official Grievance"
+  },
+  "home": {
+  "badge": "National Civic Accountability Initiative",
+  "heroTitle": "Direct Civic Grievance Redressal & Pedestrian Safety Audit",
+  "heroDescription": "CivicReflex bridges citizens with municipal engineers to resolve road potholes, garbage accumulation, unlit streets, and inaccessible urban walkways through time-bound Service Level Agreements (SLAs) and mandatory public verification.",
+  "reportIssue": "File a Grievance Now",
+  "auditBlindSpots": "Audit Blind Spots",
+  "trackerTitle": "Quick Grievance Tracker",
+  "ticketLabel": "Complaint / Ticket Number:",
+  "quickServices": "Citizen Quick Services",
+  "howItWorks": "How CivicReflex Works",
+  "categories": "Civic Issue Categories",
+  "notifications": "Latest Notifications and Circulars",
+  "transparency": "Public Transparency & Redressal Performance"
+}
+}

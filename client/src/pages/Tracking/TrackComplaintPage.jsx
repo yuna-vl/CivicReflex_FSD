@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Breadcrumbs from '../../components/common/Breadcrumbs';
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
+import { useTranslation } from 'react-i18next';
 import Alert from '../../components/common/Alert';
 import { useReports } from '../../hooks/useReports';
 import {
@@ -20,7 +21,7 @@ export const TrackComplaintPage = () => {
   const ticketParam = searchParams.get('ticket') || '';
 
   const { getTicket, verifyTicket, confirmCitizenResolution, reopenGrievance, userReports } = useReports();
-
+const { t } = useTranslation();
   const [inputTicket, setInputTicket] = useState(ticketParam || 'CR-2026-8842');
   const [activeTicketId, setActiveTicketId] = useState(ticketParam || 'CR-2026-8842');
   const [errorMsg, setErrorMsg] = useState('');
@@ -73,7 +74,7 @@ export const TrackComplaintPage = () => {
 
       <div className="portal-container" style={{ paddingTop: '2rem' }}>
         <div className="section-heading">
-          <span>Grievance Lifecycle & Public Audit Trail</span>
+          <span>{t('track.title')}</span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <Button
               variant="secondary"
@@ -81,9 +82,9 @@ export const TrackComplaintPage = () => {
               icon={LayoutDashboard}
               onClick={() => navigate('/dashboard')}
             >
-              My Dashboard
+              {t('track.dashboard')}
             </Button>
-            <Badge variant="navy">Real-time Redressal Engine</Badge>
+            <Badge variant="navy">{t('track.realTimeRedressal')}</Badge>
           </div>
         </div>
 
@@ -103,15 +104,15 @@ export const TrackComplaintPage = () => {
               <input
                 type="text"
                 className="form-control"
-                placeholder="Enter Complaint / Ticket ID (e.g. CR-2026-8842)"
+                placeholder={t('track.placeholder')}
                 value={inputTicket}
                 onChange={(e) => setInputTicket(e.target.value)}
                 style={{ fontFamily: 'monospace', textTransform: 'uppercase', fontWeight: 700 }}
               />
             </div>
             <Button variant="primary" type="submit" icon={Search}>
-              Search Audit Log
-            </Button>
+  {t('track.search')}
+</Button>
           </form>
 
           {/* Quick links to user's complaints and demo tickets */}
@@ -249,7 +250,7 @@ export const TrackComplaintPage = () => {
             {/* Visual Multi-Stage Progress Lifecycle */}
             <div style={{ marginBottom: '2.5rem' }}>
               <div className="section-heading">
-                <span>Multi-Stage Redressal Timeline</span>
+                <span>{t('track.lifecycle')}</span>
                 <span style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
                   Audited under Municipal By-laws 2026
                 </span>
@@ -423,6 +424,7 @@ export const TrackComplaintPage = () => {
                       Are you a resident of <strong>{currentTicket.ward}</strong>? Have you physically inspected this location and confirmed that the work was satisfactorily completed?
                     </p>
                   </div>
+                 
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <Button
@@ -431,7 +433,7 @@ export const TrackComplaintPage = () => {
                       onClick={handleVerificationVote}
                       disabled={isVoted}
                     >
-                      {isVoted ? 'Verified by You' : 'Verify Remediation'}
+                      {isVoted ? t('track.verified') : t('track.verifyRemediation')}
                     </Button>
                   </div>
                 </div>
