@@ -6,6 +6,7 @@ import { FIELD_OFFICERS_DIRECTORY, DEPARTMENTS_LIST } from '../../data/mockUsers
 import Button from '../../components/common/Button';
 import Badge from '../../components/common/Badge';
 import Alert from '../../components/common/Alert';
+import LiveDataNotice from '../../components/common/LiveDataNotice';
 import {
   Building2,
   HardHat,
@@ -21,17 +22,26 @@ export const AuthorityAssignmentsPage = () => {
   const navigate = useNavigate();
   const preselectedTicket = searchParams.get('ticket') || '';
 
-  const { reports, assignGrievance } = useReports();
+  const { reports, assignGrievance, departmentsList, isMockMode, isLoading, apiError, refreshData } = useReports();
   const { user } = useAuth();
 
-  // Find all unassigned or pending complaints
+  // Find all complaints awaiting initial allocation or reassignment (including Reopened & unallocated Escalated)
   const unassignedGrievances = reports.filter(
-    (r) => !r.assignedOfficerId || r.assignedDepartment === 'Unassigned' || r.status === 'Reported' || r.status === 'Verified'
+    (r) =>
+      !r.assignedOfficerId ||
+      r.assignedDepartment === 'Unassigned' ||
+      r.status === 'Reported' ||
+      r.status === 'Verified' ||
+      r.status === 'Reopened - Under Investigation' ||
+      (r.status === 'Escalated' && !r.assignedOfficerId)
   );
 
-  // Active Dispatched Assignments list
+  // Active Dispatched Assignments list (excluding tickets queued for reassignment)
   const activeAssignments = reports.filter(
-    (r) => r.assignedOfficerId && r.assignedDepartment !== 'Unassigned' && r.status !== 'Reported'
+    (r) =>
+      r.assignedOfficerId &&
+      r.assignedDepartment !== 'Unassigned' &&
+      !['Reported', 'Verified', 'Reopened - Under Investigation'].includes(r.status)
   );
 
   const [selectedTicketNumber, setSelectedTicketNumber] = useState(
@@ -57,11 +67,20 @@ export const AuthorityAssignmentsPage = () => {
     'Deploy quick response inspection squad for physical defect measurement and asphalt compaction.'
   );
   const [assignmentSuccess, setAssignmentSuccess] = useState(false);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [assignmentError, setAssignmentError] = useState('');
   const [lastAssignedTicket, setLastAssignedTicket] = useState('');
+
+  const departmentNames = isMockMode
+    ? Array.from(new Set([...(departmentsList || []).map((d) => d.name), ...DEPARTMENTS_LIST]))
+    : (departmentsList?.length ? departmentsList.map((d) => d.name) : DEPARTMENTS_LIST);
+  const effectiveDepartment = departmentNames.includes(selectedDepartment)
+    ? selectedDepartment
+    : (departmentNames[0] || selectedDepartment);
 
   // Filter officers by selected department or show matching
   const matchingOfficers = FIELD_OFFICERS_DIRECTORY.filter(
-    (off) => off.department === selectedDepartment
+    (off) => off.department === effectiveDepartment
   );
   const availableOfficers = matchingOfficers.length > 0 ? matchingOfficers : FIELD_OFFICERS_DIRECTORY;
 
@@ -73,29 +92,41 @@ export const AuthorityAssignmentsPage = () => {
     }
   };
 
-  const handleConfirmAssignment = (e) => {
+  const handleConfirmAssignment = async (e) => {
     e.preventDefault();
-    if (!selectedGrievance) return;
+    if (!selectedGrievance || assignmentBusy) return;
 
     const assignedOfficerObj = FIELD_OFFICERS_DIRECTORY.find((o) => o.id === selectedOfficerId);
     const officerName = assignedOfficerObj ? assignedOfficerObj.name : 'Mr. V. Nair';
 
-    assignGrievance(selectedGrievance.ticketNumber, {
-      department: selectedDepartment,
-      officerId: selectedOfficerId,
-      officerName: officerName,
-      priority: selectedPriority,
-      remarks: assignmentRemarks,
-      adminUser: user
-    });
+    setAssignmentBusy(true);
+    setAssignmentError('');
+    setAssignmentSuccess(false);
 
-    setLastAssignedTicket(selectedGrievance.ticketNumber);
-    setAssignmentSuccess(true);
+    try {
+      await assignGrievance(selectedGrievance.ticketNumber, {
+        department: effectiveDepartment,
+        officerId: selectedOfficerId,
+        officerName: officerName,
+        designation: assignedOfficerObj?.designation || '',
+        contact: assignedOfficerObj?.phone || assignedOfficerObj?.email || '',
+        priority: selectedPriority,
+        remarks: assignmentRemarks,
+        directives: assignmentRemarks,
+        adminUser: user
+      });
 
-    // Pick next unassigned if available
-    const remaining = unassignedGrievances.filter((r) => r.ticketNumber !== selectedGrievance.ticketNumber);
-    if (remaining.length > 0) {
-      setSelectedTicketNumber(remaining[0].ticketNumber);
+      setLastAssignedTicket(selectedGrievance.ticketNumber);
+      setAssignmentSuccess(true);
+
+      const remaining = unassignedGrievances.filter((r) => r.ticketNumber !== selectedGrievance.ticketNumber);
+      if (remaining.length > 0) {
+        setSelectedTicketNumber(remaining[0].ticketNumber);
+      }
+    } catch (err) {
+      setAssignmentError(err?.message || 'Unable to assign work order.');
+    } finally {
+      setAssignmentBusy(false);
     }
   };
 
@@ -128,10 +159,26 @@ export const AuthorityAssignmentsPage = () => {
         </div>
       </div>
 
+      <LiveDataNotice
+        isMockMode={isMockMode}
+        isLoading={isLoading}
+        apiError={apiError}
+        onRetry={refreshData}
+        resourceLabel="work order assignment queue"
+      />
+
+      {assignmentError && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <Alert type="danger" title="Assignment Failed">
+            {assignmentError}
+          </Alert>
+        </div>
+      )}
+
       {assignmentSuccess && (
         <div style={{ marginBottom: '1.5rem' }}>
           <Alert type="success" title="Work Order Successfully Dispatched">
-            Ticket <strong>{lastAssignedTicket}</strong> has been allocated to <strong>{FIELD_OFFICERS_DIRECTORY.find(o => o.id === selectedOfficerId)?.name}</strong> ({selectedDepartment}). It is now live in their field assigned work orders!
+            Ticket <strong>{lastAssignedTicket}</strong> has been allocated to <strong>{FIELD_OFFICERS_DIRECTORY.find(o => o.id === selectedOfficerId)?.name}</strong> ({effectiveDepartment}){isMockMode ? ' (simulation)' : ' in the backend registry'}.
           </Alert>
         </div>
       )}
@@ -159,19 +206,41 @@ export const AuthorityAssignmentsPage = () => {
             </div>
             <span
               style={{
-                backgroundColor: unassignedGrievances.length > 0 ? '#FEE2E2' : '#DCFCE7',
-                color: unassignedGrievances.length > 0 ? '#991B1B' : '#14532D',
+                backgroundColor:
+                  !isMockMode && (isLoading || apiError) && reports.length === 0
+                    ? '#F1F5F9'
+                    : unassignedGrievances.length > 0
+                      ? '#FEE2E2'
+                      : '#DCFCE7',
+                color:
+                  !isMockMode && (isLoading || apiError) && reports.length === 0
+                    ? '#475569'
+                    : unassignedGrievances.length > 0
+                      ? '#991B1B'
+                      : '#14532D',
                 padding: '2px 8px',
                 borderRadius: '2px',
                 fontWeight: 700,
                 fontSize: '0.75rem'
               }}
             >
-              {unassignedGrievances.length} Awaiting Assignment
+              {!isMockMode && isLoading && reports.length === 0
+                ? 'Loading...'
+                : !isMockMode && apiError && reports.length === 0
+                  ? 'Unavailable'
+                  : `${unassignedGrievances.length} Awaiting Assignment`}
             </span>
           </div>
 
-          {unassignedGrievances.length === 0 ? (
+          {!isMockMode && isLoading && reports.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+              Loading pending complaints from backend server...
+            </div>
+          ) : !isMockMode && apiError && reports.length === 0 ? (
+            <div style={{ padding: '2rem', textAlign: 'center', color: '#991B1B', fontSize: '0.875rem' }}>
+              Pending assignment queue could not be loaded. Use Retry Connection above.
+            </div>
+          ) : unassignedGrievances.length === 0 ? (
             <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-muted)' }}>
               <CheckCircle2 size={36} color="var(--color-success-green)" style={{ margin: '0 auto 0.75rem auto' }} />
               <div style={{ fontWeight: 700, color: 'var(--color-primary-navy)' }}>All Grievances Currently Assigned</div>
@@ -221,6 +290,7 @@ export const AuthorityAssignmentsPage = () => {
 
                     <div style={{ fontSize: '0.6875rem', color: 'var(--color-text-muted)', marginTop: '4px' }}>
                       Reported: {g.reportedAt} • Verified by {g.verifiedCount || 0} residents
+                      {g.status === 'Reopened - Under Investigation' && ' • Reopened — Reassignment Needed'}
                     </div>
                   </div>
                 );
@@ -270,11 +340,11 @@ export const AuthorityAssignmentsPage = () => {
                   </label>
                   <select
                     className="form-control"
-                    value={selectedDepartment}
+                    value={effectiveDepartment}
                     onChange={(e) => handleDepartmentChange(e.target.value)}
                     required
                   >
-                    {DEPARTMENTS_LIST.map((dept) => (
+                    {departmentNames.map((dept) => (
                       <option key={dept} value={dept}>{dept}</option>
                     ))}
                   </select>
@@ -313,9 +383,9 @@ export const AuthorityAssignmentsPage = () => {
                     required
                   >
                     <option value="Critical">Critical Priority (Immediate Hazard - 24 Hours SLA)</option>
-                    <option value="High">High Priority (Standard Infrastructure Repair - 72 Hours SLA)</option>
-                    <option value="Medium">Medium Priority (Scheduled Maintenance - 120 Hours SLA)</option>
-                    <option value="Low">Low Priority (Routine Overhaul - 168 Hours SLA)</option>
+                    <option value="High">High Priority (Priority Infrastructure Repair - 24 Hours SLA)</option>
+                    <option value="Medium">Medium Priority (Scheduled Maintenance - 48 Hours SLA)</option>
+                    <option value="Low">Low Priority (Routine Overhaul - 120 Hours SLA)</option>
                   </select>
                 </div>
 
@@ -341,15 +411,20 @@ export const AuthorityAssignmentsPage = () => {
                   type="submit"
                   fullWidth
                   icon={Send}
+                  disabled={assignmentBusy}
                   style={{ padding: '0.75rem', fontWeight: 700 }}
                 >
-                  Confirm & Dispatch Work Order to Field Officer
+                  {assignmentBusy ? 'Dispatching Work Order...' : 'Confirm & Dispatch Work Order to Field Officer'}
                 </Button>
               </form>
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--color-text-muted)' }}>
-              Select a grievance from the left queue to initiate assignment.
+            <div style={{ textAlign: 'center', padding: '2rem', color: !isMockMode && apiError && reports.length === 0 ? '#991B1B' : 'var(--color-text-muted)' }}>
+              {!isMockMode && isLoading && reports.length === 0
+                ? 'Loading assignment form data...'
+                : !isMockMode && apiError && reports.length === 0
+                  ? 'Assignment details are unavailable while the backend connection is failing.'
+                  : 'Select a grievance from the left queue to initiate assignment.'}
             </div>
           )}
         </div>
@@ -379,6 +454,15 @@ export const AuthorityAssignmentsPage = () => {
           </span>
         </div>
 
+        {!isMockMode && isLoading && reports.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+            Loading dispatched work orders from backend server...
+          </div>
+        ) : !isMockMode && apiError && reports.length === 0 ? (
+          <div style={{ padding: '2rem', textAlign: 'center', color: '#991B1B', fontSize: '0.875rem' }}>
+            Dispatched work orders could not be loaded while the backend request is failing.
+          </div>
+        ) : (
         <div style={{ overflowX: 'auto' }}>
           <table className="gov-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
             <thead>
@@ -419,6 +503,7 @@ export const AuthorityAssignmentsPage = () => {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

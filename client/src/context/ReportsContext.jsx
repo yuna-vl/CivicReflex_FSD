@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ReportsContext } from './reportsContextInstance';
+import { useAuth } from '../hooks/useAuth';
 import { MOCK_REPORTS } from '../data/mockReports';
 import { MOCK_TICKETS } from '../data/mockTickets';
 import {
@@ -8,11 +9,21 @@ import {
   INITIAL_DEPARTMENTS,
   INITIAL_CATEGORIES
 } from '../data/mockUsers';
+import { apiRequest, fetchAllPaginated, IS_MOCK_MODE } from '../lib/api';
+import {
+  CATEGORY_DISPLAY_NAMES,
+  checkStatusTransition,
+  extractWardLabel,
+  normalizeReport,
+  normalizeTicket
+} from '../lib/normalizers';
+import { validatePhotoValueForApi } from '../lib/imageUtils';
 
 const STORAGE_KEYS = {
   REPORTS: 'civicreflex_reports_v4',
   TICKETS: 'civicreflex_tickets_v4',
   USER_REPORTS: 'civicreflex_user_reports_v4',
+  MY_TICKET_IDS: 'civicreflex_my_ticket_ids_v4',
   BLIND_SPOTS: 'civicreflex_blind_spots_v4',
   USERS: 'civicreflex_all_users_v4',
   WARDS: 'civicreflex_wards_v4',
@@ -22,7 +33,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'civicreflex_system_settings_v4'
 };
 
-// Default Simulated Citizen Profile
+// Default Simulated Citizen Profile (mock fallback only)
 const DEFAULT_CITIZEN = {
   id: 'USR-88219',
   name: 'Vikram R. Sharma',
@@ -32,7 +43,7 @@ const DEFAULT_CITIZEN = {
   memberSince: 'March 2026'
 };
 
-// Department and Authority directory mapping for realistic routing
+// Department and Authority directory mapping for realistic mock routing
 const AUTHORITY_DIRECTORY = {
   roads: {
     dept: 'Roads and Infrastructure',
@@ -256,7 +267,31 @@ const DEFAULT_SETTINGS = {
   fontScalingDefault: 'Normal (100%)'
 };
 
+function hasValidCoordPair(lat, lng) {
+  return (
+    lat !== '' &&
+    lat !== null &&
+    lat !== undefined &&
+    lng !== '' &&
+    lng !== null &&
+    lng !== undefined &&
+    Number.isFinite(Number(lat)) &&
+    Number.isFinite(Number(lng))
+  );
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? JSON.parse(saved) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export const ReportsProvider = ({ children }) => {
+  const { user: authUser } = useAuth();
+
   // Helper: format timestamp in Indian standard format
   const getFormattedNow = () => {
     return new Date().toLocaleString('en-IN', {
@@ -269,114 +304,165 @@ export const ReportsProvider = ({ children }) => {
     });
   };
 
+  // Live API loading & error states
+  const [isLoading, setIsLoading] = useState(!IS_MOCK_MODE);
+  const [apiError, setApiError] = useState(null);
+
   // 1. All Public Reports Register
   const [reports, setReports] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.REPORTS);
-      return saved ? JSON.parse(saved) : MOCK_REPORTS;
-    } catch {
-      return MOCK_REPORTS;
-    }
+    if (!IS_MOCK_MODE) return [];
+    return readJsonStorage(STORAGE_KEYS.REPORTS, MOCK_REPORTS);
   });
 
   // 2. All Tickets Detailed Lifecycle Mapping (by Ticket Number)
   const [tickets, setTickets] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.TICKETS);
-      return saved ? JSON.parse(saved) : MOCK_TICKETS;
-    } catch {
-      return MOCK_TICKETS;
-    }
+    if (!IS_MOCK_MODE) return {};
+    return readJsonStorage(STORAGE_KEYS.TICKETS, MOCK_TICKETS);
   });
+
+  // Track ticket numbers created by this browser in live mode
+  const [myTicketIds, setMyTicketIds] = useState(() =>
+    readJsonStorage(STORAGE_KEYS.MY_TICKET_IDS, [])
+  );
+  const myTicketIdsRef = useRef(myTicketIds);
+  useEffect(() => {
+    myTicketIdsRef.current = myTicketIds;
+  }, [myTicketIds]);
 
   // 3. Current Citizen's Grievance History (Dashboard)
   const [userReports, setUserReports] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.USER_REPORTS);
-      if (saved) return JSON.parse(saved);
-
-      const initialUserReport = MOCK_REPORTS.find((r) => r.ticketNumber === 'CR-2026-8842');
-      return initialUserReport ? [initialUserReport] : [];
-    } catch {
-      return [];
-    }
+    if (!IS_MOCK_MODE) return [];
+    const saved = readJsonStorage(STORAGE_KEYS.USER_REPORTS, null);
+    if (saved) return saved;
+    const initialUserReport = MOCK_REPORTS.find((r) => r.ticketNumber === 'CR-2026-8842');
+    return initialUserReport ? [initialUserReport] : [];
   });
 
-  // 4. Blind Spot Clusters
+  // 4. Blind Spot Clusters (mock simulation only when IS_MOCK_MODE is true)
   const [blindSpotClusters, setBlindSpotClusters] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.BLIND_SPOTS);
-      return saved ? JSON.parse(saved) : DEFAULT_BLIND_SPOTS;
-    } catch {
-      return DEFAULT_BLIND_SPOTS;
-    }
+    if (!IS_MOCK_MODE) return [];
+    return readJsonStorage(STORAGE_KEYS.BLIND_SPOTS, DEFAULT_BLIND_SPOTS);
   });
 
   // 5. System Administrator: User Management Directory
-  const [usersList, setUsersList] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.USERS);
-      return saved ? JSON.parse(saved) : INITIAL_USERS;
-    } catch {
-      return INITIAL_USERS;
-    }
-  });
+  const [usersList, setUsersList] = useState(() =>
+    readJsonStorage(STORAGE_KEYS.USERS, INITIAL_USERS)
+  );
 
   // 6. System Administrator: Ward Directory
-  const [wardsList, setWardsList] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.WARDS);
-      return saved ? JSON.parse(saved) : INITIAL_WARDS;
-    } catch {
-      return INITIAL_WARDS;
-    }
-  });
+  const [wardsList, setWardsList] = useState(() =>
+    readJsonStorage(STORAGE_KEYS.WARDS, INITIAL_WARDS)
+  );
 
-  // 7. System Administrator: Departments Directory
+  // 7. System Administrator: Departments Directory (live API in live mode; mock seed only in mock mode)
   const [departmentsList, setDepartmentsList] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.DEPARTMENTS);
-      return saved ? JSON.parse(saved) : INITIAL_DEPARTMENTS;
-    } catch {
-      return INITIAL_DEPARTMENTS;
-    }
+    if (!IS_MOCK_MODE) return [];
+    return readJsonStorage(STORAGE_KEYS.DEPARTMENTS, INITIAL_DEPARTMENTS);
   });
 
   // 8. System Administrator: Categories Directory
-  const [categoriesList, setCategoriesList] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-      return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
-    } catch {
-      return INITIAL_CATEGORIES;
-    }
-  });
+  const [categoriesList, setCategoriesList] = useState(() =>
+    readJsonStorage(STORAGE_KEYS.CATEGORIES, INITIAL_CATEGORIES)
+  );
 
   // 9. System Administrator: Append-Only Audit Logs Register
-  const [auditLogs, setAuditLogs] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
-      return saved ? JSON.parse(saved) : INITIAL_AUDIT_LOGS;
-    } catch {
-      return INITIAL_AUDIT_LOGS;
-    }
-  });
+  const [auditLogs, setAuditLogs] = useState(() =>
+    readJsonStorage(STORAGE_KEYS.AUDIT_LOGS, INITIAL_AUDIT_LOGS)
+  );
 
   // 10. System Administrator: Portal Configuration Settings
-  const [systemSettings, setSystemSettings] = useState(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-      return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
-    } catch {
-      return DEFAULT_SETTINGS;
+  const [systemSettings, setSystemSettings] = useState(() =>
+    readJsonStorage(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS)
+  );
+
+  const currentUser = authUser || DEFAULT_CITIZEN;
+
+  // Hydrate live data from Express backend when not in mock mode
+  const loadLiveSnapshot = useCallback(async () => {
+    const [reportsRes, ticketsRes, departmentsRes] = await Promise.all([
+      fetchAllPaginated('/reports', { limit: 50 }),
+      fetchAllPaginated('/tickets', { limit: 50 }),
+      apiRequest('/departments').catch(() => null)
+    ]);
+
+    const ticketMap = {};
+    (ticketsRes.items || []).forEach((rawTicket) => {
+      const normalized = normalizeTicket(rawTicket);
+      if (normalized?.ticketNumber) {
+        ticketMap[normalized.ticketNumber] = normalized;
+      }
+    });
+
+    const normalizedReports = (reportsRes.items || []).map((rawReport) => {
+      const linked = rawReport.ticketNumber ? ticketMap[rawReport.ticketNumber] : null;
+      return normalizeReport(rawReport, linked);
+    });
+
+    const reportByTicket = {};
+    normalizedReports.forEach((rep) => {
+      if (rep.ticketNumber) {
+        reportByTicket[rep.ticketNumber] = rep;
+      }
+    });
+
+    Object.keys(ticketMap).forEach((tNum) => {
+      if (reportByTicket[tNum]) {
+        ticketMap[tNum] = normalizeTicket(ticketMap[tNum], reportByTicket[tNum]);
+      }
+    });
+
+    setReports(normalizedReports);
+    setTickets(ticketMap);
+
+    const trackedSet = new Set(myTicketIdsRef.current);
+    setUserReports(normalizedReports.filter((r) => trackedSet.has(r.ticketNumber)));
+
+    if (Array.isArray(departmentsRes)) {
+      setDepartmentsList(
+        departmentsRes.map((dept) => ({
+          ...dept,
+          id: dept.id || dept._id || dept.code
+        }))
+      );
     }
-  });
+  }, []);
 
-  // 11. Current Citizen User Profile
-  const [currentUser] = useState(DEFAULT_CITIZEN);
+  const refreshData = useCallback(async () => {
+    if (IS_MOCK_MODE) return;
+    setIsLoading(true);
+    setApiError(null);
+    try {
+      await loadLiveSnapshot();
+    } catch (err) {
+      setApiError(err?.message || 'Unable to load civic data from backend server.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [loadLiveSnapshot]);
 
-  // Sync to localStorage
   useEffect(() => {
+    if (IS_MOCK_MODE) return undefined;
+    let active = true;
+    loadLiveSnapshot()
+      .then(() => {
+        if (active) setApiError(null);
+      })
+      .catch((err) => {
+        if (active) {
+          setApiError(err?.message || 'Unable to load civic data from backend server.');
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadLiveSnapshot]);
+
+  // Sync to localStorage (only persist mock reports/tickets when in mock mode)
+  useEffect(() => {
+    if (!IS_MOCK_MODE) return;
     try {
       localStorage.setItem(STORAGE_KEYS.REPORTS, JSON.stringify(reports));
     } catch (e) {
@@ -385,6 +471,7 @@ export const ReportsProvider = ({ children }) => {
   }, [reports]);
 
   useEffect(() => {
+    if (!IS_MOCK_MODE) return;
     try {
       localStorage.setItem(STORAGE_KEYS.TICKETS, JSON.stringify(tickets));
     } catch (e) {
@@ -393,6 +480,7 @@ export const ReportsProvider = ({ children }) => {
   }, [tickets]);
 
   useEffect(() => {
+    if (!IS_MOCK_MODE) return;
     try {
       localStorage.setItem(STORAGE_KEYS.USER_REPORTS, JSON.stringify(userReports));
     } catch (e) {
@@ -401,6 +489,15 @@ export const ReportsProvider = ({ children }) => {
   }, [userReports]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.MY_TICKET_IDS, JSON.stringify(myTicketIds));
+    } catch (e) {
+      console.warn('Storage sync failed for tracked ticket ids', e);
+    }
+  }, [myTicketIds]);
+
+  useEffect(() => {
+    if (!IS_MOCK_MODE) return;
     try {
       localStorage.setItem(STORAGE_KEYS.BLIND_SPOTS, JSON.stringify(blindSpotClusters));
     } catch (e) {
@@ -425,6 +522,7 @@ export const ReportsProvider = ({ children }) => {
   }, [wardsList]);
 
   useEffect(() => {
+    if (!IS_MOCK_MODE) return;
     try {
       localStorage.setItem(STORAGE_KEYS.DEPARTMENTS, JSON.stringify(departmentsList));
     } catch (e) {
@@ -456,6 +554,70 @@ export const ReportsProvider = ({ children }) => {
     }
   }, [systemSettings]);
 
+  const reportsRef = useRef(reports);
+  useEffect(() => {
+    reportsRef.current = reports;
+  }, [reports]);
+
+  const ticketsRef = useRef(tickets);
+  useEffect(() => {
+    ticketsRef.current = tickets;
+  }, [tickets]);
+
+  const syncUpdatedTicketIntoState = useCallback((rawTicket, linkedReport = null) => {
+    const ticketNum = String(rawTicket?.ticketNumber || '').trim().toUpperCase();
+    if (!ticketNum) return null;
+
+    const existingTicket = ticketsRef.current[ticketNum] || null;
+    const matchedReport =
+      linkedReport ||
+      reportsRef.current.find(
+        (r) =>
+          r.ticketNumber === ticketNum ||
+          (Array.isArray(rawTicket?.reportIds) && rawTicket.reportIds.includes(r.id))
+      ) ||
+      null;
+
+    const fallbackMetadata = matchedReport || (existingTicket
+      ? {
+          description: existingTicket.description,
+          photoUrl: existingTicket.photoUrl,
+          verifiedCount: existingTicket.verifiedCount,
+          verifiedBy: existingTicket.verifiedBy
+        }
+      : null);
+
+    const normalizedTicket = normalizeTicket(rawTicket, fallbackMetadata);
+    if (!normalizedTicket?.ticketNumber) return null;
+
+    setTickets((prev) => ({
+      ...prev,
+      [normalizedTicket.ticketNumber]: normalizedTicket
+    }));
+
+    const updateReportList = (list) =>
+      list.map((rep) => {
+        if (rep.ticketNumber !== normalizedTicket.ticketNumber) return rep;
+        return normalizeReport(
+          {
+            ...rep,
+            status: normalizedTicket.currentStatus,
+            severity: normalizedTicket.rawUrgencyLevel || rep.severity,
+            assignedDepartment: normalizedTicket.assignedAuthority?.department || rep.assignedDepartment,
+            assignedOfficer: normalizedTicket.assignedAuthority?.name || rep.assignedOfficer,
+            assignedOfficerId: normalizedTicket.assignedOfficerId ?? rep.assignedOfficerId,
+            beforePhotoUrl: normalizedTicket.inspection?.beforePhotoUrl || rep.beforePhotoUrl || rep.photoUrl,
+            afterPhotoUrl: normalizedTicket.inspection?.afterPhotoUrl || rep.afterPhotoUrl
+          },
+          normalizedTicket
+        );
+      });
+
+    setReports(updateReportList);
+    setUserReports(updateReportList);
+    return normalizedTicket;
+  }, []);
+
   /**
    * Append-Only Audit Logger
    */
@@ -476,7 +638,104 @@ export const ReportsProvider = ({ children }) => {
   }, []);
 
   /**
-   * Submit a new civic grievance (Citizen action)
+   * Fetch live ticket + linked report from backend (or return mock data in mock mode)
+   */
+  const fetchTicketDetails = useCallback(async (idOrTicketNumber) => {
+    const clean = String(idOrTicketNumber || '').trim().toUpperCase();
+    if (!clean) return null;
+
+    if (IS_MOCK_MODE) {
+      const localTicket = ticketsRef.current[clean] || null;
+      const localReport =
+        reportsRef.current.find((r) => r.ticketNumber === clean || r.id === clean) || null;
+      if (!localTicket && localReport?.ticketNumber && ticketsRef.current[localReport.ticketNumber]) {
+        const resolvedTicket = ticketsRef.current[localReport.ticketNumber];
+        return {
+          ticket: normalizeTicket(resolvedTicket, localReport),
+          report: normalizeReport(localReport, resolvedTicket)
+        };
+      }
+      if (!localTicket) return null;
+      return {
+        ticket: normalizeTicket(localTicket, localReport),
+        report: localReport ? normalizeReport(localReport, localTicket) : null
+      };
+    }
+
+    let targetTicketNumber = clean;
+    let fetchedReport = null;
+
+    if (clean.startsWith('REP-')) {
+      fetchedReport = await apiRequest(`/reports/${encodeURIComponent(clean)}`);
+      if (!fetchedReport?.ticketNumber) {
+        return { ticket: null, report: normalizeReport(fetchedReport) };
+      }
+      targetTicketNumber = String(fetchedReport.ticketNumber).trim().toUpperCase();
+    }
+
+    const rawTicket = await apiRequest(`/tickets/${encodeURIComponent(targetTicketNumber)}`);
+
+    if (!fetchedReport && Array.isArray(rawTicket?.reportIds) && rawTicket.reportIds.length > 0) {
+      try {
+        fetchedReport = await apiRequest(`/reports/${encodeURIComponent(rawTicket.reportIds[0])}`);
+      } catch {
+        // Linked report lookup is optional enrichment; keep ticket view functional
+      }
+    }
+
+    const normalizedReport = fetchedReport ? normalizeReport(fetchedReport, rawTicket) : null;
+    const normalizedTicket = normalizeTicket(rawTicket, normalizedReport);
+
+    setTickets((prev) => ({
+      ...prev,
+      [normalizedTicket.ticketNumber]: normalizedTicket
+    }));
+
+    if (normalizedReport) {
+      setReports((prev) => {
+        const exists = prev.some((r) => r.id === normalizedReport.id);
+        return exists
+          ? prev.map((r) => (r.id === normalizedReport.id ? normalizedReport : r))
+          : [normalizedReport, ...prev];
+      });
+      setUserReports((prev) =>
+        prev.map((r) =>
+          r.id === normalizedReport.id || r.ticketNumber === normalizedReport.ticketNumber
+            ? normalizedReport
+            : r
+        )
+      );
+    } else if (normalizedTicket?.ticketNumber) {
+      const syncFallback = (list) =>
+        list.map((rep) =>
+          rep.ticketNumber === normalizedTicket.ticketNumber
+            ? normalizeReport(
+                {
+                  ...rep,
+                  status: normalizedTicket.currentStatus,
+                  severity: normalizedTicket.rawUrgencyLevel || rep.severity,
+                  assignedDepartment:
+                    normalizedTicket.assignedAuthority?.department || rep.assignedDepartment,
+                  assignedOfficer: normalizedTicket.assignedAuthority?.name || rep.assignedOfficer,
+                  assignedOfficerId: normalizedTicket.assignedOfficerId ?? rep.assignedOfficerId,
+                  beforePhotoUrl:
+                    normalizedTicket.inspection?.beforePhotoUrl || rep.beforePhotoUrl || rep.photoUrl,
+                  afterPhotoUrl:
+                    normalizedTicket.inspection?.afterPhotoUrl || rep.afterPhotoUrl
+                },
+                normalizedTicket
+              )
+            : rep
+        );
+      setReports(syncFallback);
+      setUserReports(syncFallback);
+    }
+
+    return { ticket: normalizedTicket, report: normalizedReport };
+  }, []);
+
+  /**
+   * Submit a new civic grievance or blind-spot experience report (Citizen action)
    */
   const submitReport = useCallback(({
     category,
@@ -485,113 +744,227 @@ export const ReportsProvider = ({ children }) => {
     title,
     description,
     ward,
+    wardNumber,
     landmark,
+    location,
     severity = 'Medium',
     citizenName,
     citizenPhone,
-    photoUrl
+    photoUrl,
+    latitude,
+    longitude,
+    type = 'issue',
+    timeOfDay,
+    isAnonymous = false,
+    idempotencyKey
   }) => {
-    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
-    const ticketNumber = `CR-2026-${randomSuffix}`;
-    const reportId = `REP-2026-${randomSuffix}`;
-    const formattedDate = getFormattedNow();
-    const now = new Date();
+    const resolvedCategoryName = categoryName || CATEGORY_DISPLAY_NAMES[category] || category || 'Public Safety';
+    const cleanWardLabel = extractWardLabel(wardNumber || ward || 'Ward 14');
 
-    const authority = AUTHORITY_DIRECTORY[category] || AUTHORITY_DIRECTORY.roads;
-    const slaTargetDate = new Date(now.getTime() + authority.slaHours * 60 * 60 * 1000).toLocaleString('en-IN', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true
-    });
+    if (IS_MOCK_MODE) {
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const ticketNumber = `CR-2026-${randomSuffix}`;
+      const reportId = `REP-2026-${randomSuffix}`;
+      const formattedDate = getFormattedNow();
+      const now = new Date();
 
-    const resolvedCategoryName = categoryName || (
-      category === 'roads' ? 'Road Damage / Potholes' :
-      category === 'sanitation' ? 'Garbage and Waste Management' :
-      category === 'lighting' ? 'Streetlight Issues' :
-      category === 'drainage' ? 'Drainage and Waterlogging' :
-      category === 'accessibility' ? 'Footpath and Accessibility' : 'Public Safety'
-    );
+      const authority = AUTHORITY_DIRECTORY[category] || AUTHORITY_DIRECTORY.roads;
+      const slaTargetDate = new Date(now.getTime() + authority.slaHours * 60 * 60 * 1000).toLocaleString('en-IN', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
 
-    const newReport = {
-      id: reportId,
-      ticketNumber,
-      title: title || `${subcategory} in ${ward}`,
-      category: resolvedCategoryName,
-      subcategory: subcategory || 'Infrastructure Repair',
-      location: landmark ? `${landmark}, ${ward}` : ward,
-      zone: ward.includes('South') ? 'South Zone' : ward.includes('Central') ? 'Central Zone' : ward.includes('North') ? 'North Zone' : 'West Zone',
-      wardNumber: ward.split('(')[0].trim(),
-      landmark: landmark || 'Prominent neighborhood junction',
-      reportedAt: formattedDate,
-      status: 'Reported',
-      severity: severity || 'Medium',
-      upvotes: 1,
-      verifiedCount: 0,
-      assignedDepartment: 'Unassigned',
-      assignedOfficer: 'Awaiting Allocation',
-      assignedOfficerId: null,
-      slaTargetDate,
-      description,
-      photoUrl: photoUrl || 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=600&q=80',
-      isUserSubmitted: true,
-      moderationStatus: 'Approved',
-      moderationHistory: [],
-      actionsTaken: [
-        { timestamp: formattedDate, action: 'Grievance lodged by citizen via CivicReflex Web Portal' },
-        { timestamp: formattedDate, action: `Queued for departmental allocation under ${resolvedCategoryName}` }
-      ]
-    };
+      const hasCoords = hasValidCoordPair(latitude, longitude);
+      const geo = hasCoords
+        ? { type: 'Point', coordinates: [Number(longitude), Number(latitude)] }
+        : undefined;
 
-    const newTicket = {
-      ticketNumber,
-      citizenName: citizenName || currentUser.name,
-      citizenContact: citizenPhone ? `******${citizenPhone.slice(-4)}` : currentUser.phone,
-      ward,
-      category: resolvedCategoryName,
-      issueType: subcategory || 'General Repair',
-      subject: title || `${subcategory} reported`,
-      address: landmark ? `${landmark}, ${ward}` : ward,
-      submissionDate: formattedDate,
-      expectedResolutionDate: slaTargetDate,
-      currentStatus: 'Reported',
-      urgencyLevel: `${severity} Priority`,
-      isUserSubmitted: true,
-      assignedOfficerId: null,
-      assignedAuthority: {
-        name: 'Awaiting Allocation',
-        designation: 'Zonal Assignment Desk',
-        department: 'Unassigned',
-        contact: 'nodal-desk@civicreflex.gov.in'
-      },
-      timeline: [
-        {
-          stage: 'Reported',
-          title: 'Grievance Lodged & Geotagged',
-          description: `Grievance registered under ${resolvedCategoryName} with photographic evidence. Unique Ticket ID issued.`,
-          date: formattedDate,
-          completed: true,
-          officer: 'System Automated Routing'
+      const newReport = {
+        id: reportId,
+        reportId,
+        ticketNumber,
+        type,
+        title: title || `${subcategory} in ${ward || cleanWardLabel}`,
+        category: resolvedCategoryName,
+        subcategory: subcategory || 'Infrastructure Repair',
+        location: location || (landmark ? `${landmark}, ${ward || cleanWardLabel}` : (ward || cleanWardLabel)),
+        zone: String(ward || '').includes('South') ? 'South Zone' : String(ward || '').includes('Central') ? 'Central Zone' : String(ward || '').includes('North') ? 'North Zone' : 'West Zone',
+        wardNumber: cleanWardLabel,
+        landmark: landmark || 'Prominent neighborhood junction',
+        geo,
+        timeOfDay: timeOfDay || '',
+        reportedAt: formattedDate,
+        status: 'Reported',
+        severity: severity || 'Medium',
+        upvotes: 1,
+        verifiedCount: 0,
+        verifiedBy: [],
+        assignedDepartment: 'Unassigned',
+        assignedOfficer: 'Awaiting Allocation',
+        assignedOfficerId: null,
+        slaTargetDate,
+        description,
+        photoUrl: photoUrl || 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=600&q=80',
+        isUserSubmitted: true,
+        moderationStatus: 'Approved',
+        moderationHistory: [],
+        actionsTaken: [
+          { timestamp: formattedDate, action: 'Grievance lodged by citizen via CivicReflex Web Portal' },
+          { timestamp: formattedDate, action: `Queued for departmental allocation under ${resolvedCategoryName}` }
+        ]
+      };
+
+      const newTicket = {
+        ticketNumber,
+        reportIds: [reportId],
+        citizenName: citizenName || currentUser.name,
+        citizenContact: citizenPhone ? `******${citizenPhone.slice(-4)}` : currentUser.phone,
+        ward: ward || cleanWardLabel,
+        category: resolvedCategoryName,
+        issueType: subcategory || 'General Repair',
+        subject: title || `${subcategory} reported`,
+        address: location || (landmark ? `${landmark}, ${ward || cleanWardLabel}` : (ward || cleanWardLabel)),
+        submissionDate: formattedDate,
+        expectedResolutionDate: slaTargetDate,
+        currentStatus: 'Reported',
+        urgencyLevel: `${severity} Priority`,
+        isUserSubmitted: true,
+        assignedOfficerId: null,
+        assignedAuthority: {
+          name: 'Awaiting Allocation',
+          designation: 'Zonal Assignment Desk',
+          department: 'Unassigned',
+          contact: 'nodal-desk@civicreflex.gov.in'
+        },
+        timeline: [
+          {
+            stage: 'Reported',
+            title: 'Grievance Lodged & Geotagged',
+            description: `Grievance registered under ${resolvedCategoryName} with photographic evidence. Unique Ticket ID issued.`,
+            date: formattedDate,
+            completed: true,
+            officer: 'System Automated Routing'
+          }
+        ]
+      };
+
+      setReports((prev) => [newReport, ...prev]);
+      setTickets((prev) => ({ [ticketNumber]: newTicket, ...prev }));
+      setUserReports((prev) => [newReport, ...prev]);
+
+      addAuditLog({
+        action: 'GRIEVANCE_LODGED',
+        relatedRecord: ticketNumber,
+        description: `Citizen registered new grievance: "${title || subcategory}" in ${ward || cleanWardLabel}.`,
+        user: citizenName || currentUser.name,
+        role: 'citizen'
+      });
+
+      return { ticketNumber, report: newReport, ticket: newTicket };
+    }
+
+    return (async () => {
+      const safePhotoUrl = photoUrl ? validatePhotoValueForApi(photoUrl) : '';
+      const payload = {
+        title: (title || `${subcategory || resolvedCategoryName} in ${cleanWardLabel}`).trim(),
+        category: resolvedCategoryName,
+        description: String(description || '').trim(),
+        wardNumber: cleanWardLabel,
+        type,
+        ...(subcategory ? { subcategory } : {}),
+        ...(location || landmark ? { location: location || `${landmark}, ${cleanWardLabel}` } : {}),
+        ...(landmark ? { landmark } : {}),
+        ...(safePhotoUrl ? { photoUrl: safePhotoUrl } : {}),
+        ...(severity ? { severity } : {}),
+        ...(timeOfDay ? { timeOfDay } : {}),
+        ...(typeof isAnonymous === 'boolean' ? { isAnonymous } : {}),
+        ...(hasValidCoordPair(latitude, longitude)
+          ? { latitude: Number(latitude), longitude: Number(longitude) }
+          : {})
+      };
+
+      const requestKey =
+        idempotencyKey || `cr-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+      const createdRawReport = await apiRequest('/reports', {
+        method: 'POST',
+        body: payload,
+        idempotencyKey: requestKey
+      });
+
+      let fetchedTicket = null;
+      if (createdRawReport?.ticketNumber) {
+        try {
+          fetchedTicket = await apiRequest(
+            `/tickets/${encodeURIComponent(createdRawReport.ticketNumber)}`
+          );
+        } catch {
+          // Ticket fetch fallback below
         }
-      ]
-    };
+      }
 
-    setReports((prev) => [newReport, ...prev]);
-    setTickets((prev) => ({ [ticketNumber]: newTicket, ...prev }));
-    setUserReports((prev) => [newReport, ...prev]);
+      const normalizedReport = normalizeReport(
+        { ...createdRawReport, isUserSubmitted: true },
+        fetchedTicket
+      );
+      const normalizedTicket = fetchedTicket
+        ? normalizeTicket({ ...fetchedTicket, isUserSubmitted: true }, normalizedReport)
+        : normalizeTicket(
+            {
+              ticketNumber: normalizedReport.ticketNumber,
+              reportIds: [normalizedReport.reportId],
+              currentStatus: normalizedReport.status,
+              urgencyLevel: normalizedReport.severity,
+              ward: normalizedReport.wardNumber,
+              category: normalizedReport.category,
+              issueType: normalizedReport.subcategory,
+              subject: normalizedReport.title,
+              address: normalizedReport.location,
+              expectedResolutionDate: createdRawReport.slaTargetDate,
+              isUserSubmitted: true,
+              timeline: []
+            },
+            normalizedReport
+          );
 
-    // Record in administrative audit log
-    addAuditLog({
-      action: 'GRIEVANCE_LODGED',
-      relatedRecord: ticketNumber,
-      description: `Citizen registered new grievance: "${title || subcategory}" in ${ward}.`,
-      user: citizenName || currentUser.name,
-      role: 'citizen'
-    });
+      setReports((prev) => {
+        const exists = prev.some((r) => r.id === normalizedReport.id);
+        return exists ? prev : [normalizedReport, ...prev];
+      });
+      setTickets((prev) => ({
+        ...prev,
+        [normalizedTicket.ticketNumber]: normalizedTicket
+      }));
+      setUserReports((prev) => {
+        const exists = prev.some((r) => r.id === normalizedReport.id);
+        return exists ? prev : [normalizedReport, ...prev];
+      });
+      if (normalizedTicket.ticketNumber) {
+        setMyTicketIds((prev) =>
+          prev.includes(normalizedTicket.ticketNumber)
+            ? prev
+            : [normalizedTicket.ticketNumber, ...prev]
+        );
+      }
 
-    return { ticketNumber, report: newReport, ticket: newTicket };
+      addAuditLog({
+        action: 'GRIEVANCE_LODGED',
+        relatedRecord: normalizedTicket.ticketNumber,
+        description: `Citizen registered new grievance: "${normalizedReport.title}" in ${normalizedReport.wardNumber}.`,
+        user: citizenName || currentUser.name,
+        role: 'citizen'
+      });
+
+      return {
+        ticketNumber: normalizedTicket.ticketNumber,
+        report: normalizedReport,
+        ticket: normalizedTicket
+      };
+    })();
   }, [currentUser, addAuditLog]);
 
   /**
@@ -619,399 +992,635 @@ export const ReportsProvider = ({ children }) => {
     department,
     officerId,
     officerName,
+    designation = '',
+    contact = '',
     priority = 'High',
     remarks = '',
+    directives = '',
     adminUser = null
   }) => {
     const cleanId = String(ticketNumber).trim().toUpperCase();
-    const formattedDate = getFormattedNow();
 
-    // 1. Update Tickets mapping
-    setTickets((prev) => {
-      const ticket = prev[cleanId];
-      if (!ticket) return prev;
+    if (IS_MOCK_MODE) {
+      const formattedDate = getFormattedNow();
 
-      const newTimelineItem = {
-        stage: 'Assigned',
-        title: `Work Order Assigned to ${officerName}`,
-        description: remarks || `Departmental assignment to ${department} approved by ${adminUser?.name || 'Authority'}.`,
-        date: formattedDate,
-        completed: true,
-        officer: adminUser?.name || 'Superintending Engineer'
-      };
+      setTickets((prev) => {
+        const ticket = prev[cleanId];
+        if (!ticket) return prev;
 
-      return {
-        ...prev,
-        [cleanId]: {
-          ...ticket,
-          currentStatus: 'Assigned',
-          urgencyLevel: `${priority} Priority`,
-          assignedOfficerId: officerId,
-          assignedAuthority: {
-            name: officerName,
-            designation: 'Assigned Field Officer',
-            department: department,
-            contact: `${officerId.toLowerCase()}@civicreflex.gov.in`
-          },
-          timeline: [...ticket.timeline, newTimelineItem]
+        const newTimelineItem = {
+          stage: 'Assigned',
+          title: `Work Order Assigned to ${officerName}`,
+          description: directives || remarks || `Departmental assignment to ${department} approved by ${adminUser?.name || 'Authority'}.`,
+          date: formattedDate,
+          completed: true,
+          officer: adminUser?.name || 'Superintending Engineer'
+        };
+
+        return {
+          ...prev,
+          [cleanId]: {
+            ...ticket,
+            currentStatus: 'Assigned',
+            urgencyLevel: `${priority} Priority`,
+            assignedOfficerId: officerId,
+            assignedAuthority: {
+              name: officerName,
+              designation: designation || 'Assigned Field Officer',
+              department: department,
+              contact: contact || `${officerId.toLowerCase()}@civicreflex.gov.in`
+            },
+            timeline: [...ticket.timeline, newTimelineItem]
+          }
+        };
+      });
+
+      setReports((prev) =>
+        prev.map((r) => {
+          if (r.ticketNumber !== cleanId) return r;
+          return {
+            ...r,
+            status: 'Assigned',
+            severity: priority,
+            assignedDepartment: department,
+            assignedOfficer: officerName,
+            assignedOfficerId: officerId,
+            actionsTaken: [
+              ...r.actionsTaken,
+              {
+                timestamp: formattedDate,
+                action: `Assigned to ${officerName} (${department}) by Authority. Priority: ${priority}. Instructions: "${directives || remarks || 'Take immediate corrective action'}"`
+              }
+            ]
+          };
+        })
+      );
+
+      setUserReports((prev) =>
+        prev.map((r) => {
+          if (r.ticketNumber !== cleanId) return r;
+          return {
+            ...r,
+            status: 'Assigned',
+            assignedDepartment: department,
+            assignedOfficer: officerName,
+            assignedOfficerId: officerId
+          };
+        })
+      );
+
+      addAuditLog({
+        action: 'GRIEVANCE_ASSIGNED',
+        relatedRecord: cleanId,
+        description: `Work order assigned to ${officerName} (${department}) by ${adminUser?.name || 'Municipal Authority'}. Priority: ${priority}.`,
+        user: adminUser?.name || 'Authority Officer',
+        role: 'authority'
+      });
+
+      return true;
+    }
+
+    return (async () => {
+      const updatedTicket = await apiRequest(`/tickets/${encodeURIComponent(cleanId)}/assign`, {
+        method: 'POST',
+        includeActor: true,
+        actor: adminUser || authUser,
+        body: {
+          department,
+          officerId,
+          officerName,
+          ...(designation ? { designation } : {}),
+          ...(contact ? { contact } : {}),
+          ...(priority ? { priority } : {}),
+          ...(directives || remarks ? { directives: directives || remarks } : {})
         }
-      };
-    });
+      });
 
-    // 2. Update Public Reports Register
-    setReports((prev) =>
-      prev.map((r) => {
-        if (r.ticketNumber !== cleanId) return r;
-        return {
-          ...r,
-          status: 'Assigned',
-          severity: priority,
-          assignedDepartment: department,
-          assignedOfficer: officerName,
-          assignedOfficerId: officerId,
-          actionsTaken: [
-            ...r.actionsTaken,
-            {
-              timestamp: formattedDate,
-              action: `Assigned to ${officerName} (${department}) by Authority. Priority: ${priority}. Instructions: "${remarks || 'Take immediate corrective action'}"`
-            }
-          ]
-        };
-      })
-    );
+      const normalized = syncUpdatedTicketIntoState(updatedTicket);
+      addAuditLog({
+        action: 'GRIEVANCE_ASSIGNED',
+        relatedRecord: cleanId,
+        description: `Work order assigned to ${officerName} (${department}) by ${adminUser?.name || authUser?.name || 'Municipal Authority'}. Priority: ${priority}.`,
+        user: adminUser?.name || authUser?.name || 'Authority Officer',
+        role: adminUser?.role || authUser?.role || 'authority'
+      });
 
-    // 3. Update User Reports if present
-    setUserReports((prev) =>
-      prev.map((r) => {
-        if (r.ticketNumber !== cleanId) return r;
-        return {
-          ...r,
-          status: 'Assigned',
-          assignedDepartment: department,
-          assignedOfficer: officerName,
-          assignedOfficerId: officerId
-        };
-      })
-    );
-
-    // Record in audit log
-    addAuditLog({
-      action: 'GRIEVANCE_ASSIGNED',
-      relatedRecord: cleanId,
-      description: `Work order assigned to ${officerName} (${department}) by ${adminUser?.name || 'Municipal Authority'}. Priority: ${priority}.`,
-      user: adminUser?.name || 'Authority Officer',
-      role: 'authority'
-    });
-
-    return true;
-  }, [addAuditLog]);
+      return normalized;
+    })();
+  }, [authUser, addAuditLog, syncUpdatedTicketIntoState]);
 
   /**
-   * Update grievance status according to valid lifecycle progression (Authority or System action)
+   * Update grievance status according to valid lifecycle progression
    */
   const updateGrievanceStatus = useCallback((ticketNumber, newStatus, remarks = '', officerInfo = null) => {
     const cleanId = String(ticketNumber).trim().toUpperCase();
-    const formattedDate = getFormattedNow();
 
-    setTickets((prev) => {
-      const ticket = prev[cleanId];
-      if (!ticket) return prev;
+    if (IS_MOCK_MODE) {
+      const actor = officerInfo || authUser;
+      const actorRole = String(actor?.role || 'authority').trim().toLowerCase();
+      const existingTicket = ticketsRef.current[cleanId];
+      if (!existingTicket) {
+        throw new Error(`Ticket with number '${cleanId}' not found`);
+      }
 
-      const previousStatus = ticket.currentStatus;
-      const timelineEntry = {
-        stage: newStatus,
-        title: `Status Transition: ${newStatus}`,
-        description: remarks || `Status transitioned from ${previousStatus} to ${newStatus}.`,
-        date: formattedDate,
-        completed: true,
-        officer: officerInfo?.name || 'Municipal Authority'
-      };
+      const { isLifecycleValid, isRoleAllowed } = checkStatusTransition(
+        existingTicket.currentStatus,
+        newStatus,
+        actorRole
+      );
+      if (!isLifecycleValid) {
+        throw new Error(`Cannot transition ticket from '${existingTicket.currentStatus}' to '${newStatus}'`);
+      }
+      if (!isRoleAllowed) {
+        throw new Error(`Role '${actorRole}' cannot move a ticket from ${existingTicket.currentStatus} to ${newStatus}`);
+      }
 
-      return {
-        ...prev,
-        [cleanId]: {
-          ...ticket,
-          currentStatus: newStatus,
-          timeline: [...ticket.timeline, timelineEntry]
-        }
-      };
-    });
+      const formattedDate = getFormattedNow();
 
-    setReports((prev) =>
-      prev.map((r) => {
-        if (r.ticketNumber !== cleanId) return r;
-        return {
-          ...r,
-          status: newStatus,
-          actionsTaken: [
-            ...r.actionsTaken,
-            {
-              timestamp: formattedDate,
-              action: `Status updated to ${newStatus} by ${officerInfo?.name || 'Authority'}. Remarks: "${remarks || 'Updated via Authority Portal'}"`
-            }
-          ]
+      setTickets((prev) => {
+        const ticket = prev[cleanId];
+        if (!ticket) return prev;
+
+        const previousStatus = ticket.currentStatus;
+        const timelineEntry = {
+          stage: newStatus,
+          title: `Status Transition: ${newStatus}`,
+          description: remarks || `Status transitioned from ${previousStatus} to ${newStatus}.`,
+          date: formattedDate,
+          completed: true,
+          officer: officerInfo?.name || 'Municipal Authority'
         };
-      })
-    );
 
-    setUserReports((prev) =>
-      prev.map((r) => (r.ticketNumber === cleanId ? { ...r, status: newStatus } : r))
-    );
+        return {
+          ...prev,
+          [cleanId]: {
+            ...ticket,
+            currentStatus: newStatus,
+            timeline: [...ticket.timeline, timelineEntry]
+          }
+        };
+      });
 
-    addAuditLog({
-      action: 'STATUS_UPDATED',
-      relatedRecord: cleanId,
-      description: `Status changed to ${newStatus} by ${officerInfo?.name || 'Authority'}. Remarks: "${remarks || 'Standard update'}"`,
-      user: officerInfo?.name || 'Municipal Authority',
-      role: officerInfo?.role || 'authority'
-    });
+      setReports((prev) =>
+        prev.map((r) => {
+          if (r.ticketNumber !== cleanId) return r;
+          return {
+            ...r,
+            status: newStatus,
+            actionsTaken: [
+              ...r.actionsTaken,
+              {
+                timestamp: formattedDate,
+                action: `Status updated to ${newStatus} by ${officerInfo?.name || 'Authority'}. Remarks: "${remarks || 'Updated via Authority Portal'}"`
+              }
+            ]
+          };
+        })
+      );
 
-    return true;
-  }, [addAuditLog]);
+      setUserReports((prev) =>
+        prev.map((r) => (r.ticketNumber === cleanId ? { ...r, status: newStatus } : r))
+      );
+
+      addAuditLog({
+        action: 'STATUS_UPDATED',
+        relatedRecord: cleanId,
+        description: `Status changed to ${newStatus} by ${officerInfo?.name || 'Authority'}. Remarks: "${remarks || 'Standard update'}"`,
+        user: officerInfo?.name || 'Municipal Authority',
+        role: officerInfo?.role || 'authority'
+      });
+
+      return true;
+    }
+
+    return (async () => {
+      const updatedTicket = await apiRequest(`/tickets/${encodeURIComponent(cleanId)}/status`, {
+        method: 'PATCH',
+        includeActor: true,
+        actor: officerInfo || authUser,
+        body: {
+          status: newStatus,
+          ...(remarks ? { note: remarks } : {})
+        }
+      });
+
+      const normalized = syncUpdatedTicketIntoState(updatedTicket);
+      addAuditLog({
+        action: 'STATUS_UPDATED',
+        relatedRecord: cleanId,
+        description: `Status changed to ${newStatus} by ${officerInfo?.name || authUser?.name || 'Authority'}. Remarks: "${remarks || 'Standard update'}"`,
+        user: officerInfo?.name || authUser?.name || 'Municipal Authority',
+        role: officerInfo?.role || 'authority'
+      });
+
+      return normalized;
+    })();
+  }, [authUser, addAuditLog, syncUpdatedTicketIntoState]);
 
   /**
    * Field Officer Inspection & Work Order Actions
    */
   const updateFieldInspection = useCallback((ticketNumber, {
-    action, // 'start_inspection' | 'submit_inspection' | 'start_work' | 'upload_photos' | 'complete_work'
+    action,
     remarks = '',
     measurements = '',
     recommendedSquad = '',
     beforePhotoUrl = '',
     afterPhotoUrl = '',
+    photoUrl = '',
     completionReport = '',
+    note = '',
     officerUser = null
   }) => {
     const cleanId = String(ticketNumber).trim().toUpperCase();
-    const formattedDate = getFormattedNow();
 
-    setTickets((prev) => {
-      const ticket = prev[cleanId];
-      if (!ticket) return prev;
+    if (IS_MOCK_MODE) {
+      const formattedDate = getFormattedNow();
 
-      let updatedStatus = ticket.currentStatus;
-      let timelineTitle = 'Inspection Update';
-      let timelineDesc = remarks;
+      setTickets((prev) => {
+        const ticket = prev[cleanId];
+        if (!ticket) return prev;
 
-      if (action === 'start_inspection') {
-        timelineTitle = 'On-Ground Site Inspection Initiated';
-        timelineDesc = `Field Officer ${officerUser?.name || 'assigned'} has arrived on site and initiated physical inspection.`;
-      } else if (action === 'submit_inspection') {
-        timelineTitle = 'Inspection Findings & Defect Assessment Filed';
-        timelineDesc = `Measurements: ${measurements || 'Recorded'}. Squad Required: ${recommendedSquad || 'General PWD'}. Remarks: ${remarks}`;
-      } else if (action === 'start_work') {
-        updatedStatus = 'In Progress';
-        timelineTitle = 'Field Remediation Work Started';
-        timelineDesc = `Contractor squad deployed on site. Material preparation and repairs commenced. Remarks: ${remarks || 'Work actively ongoing'}`;
-      } else if (action === 'upload_photos') {
-        timelineTitle = 'Site Evidence Documentation Uploaded';
-        timelineDesc = 'Before/during photo evidence recorded in audit log.';
-      } else if (action === 'complete_work') {
-        updatedStatus = 'Resolved';
-        timelineTitle = 'Remediation Completed by Field Squad';
-        timelineDesc = `Work order executed and completed. After-remediation photographic proof submitted. Awaiting Citizen Confirmation. Completion Notes: ${completionReport || remarks}`;
-      }
+        let updatedStatus = ticket.currentStatus;
+        let timelineTitle = 'Inspection Update';
+        let timelineDesc = remarks || note;
 
-      const newTimelineItem = {
-        stage: updatedStatus,
-        title: timelineTitle,
-        description: timelineDesc,
-        date: formattedDate,
-        completed: true,
-        officer: officerUser?.name || 'Field Officer'
-      };
-
-      return {
-        ...prev,
-        [cleanId]: {
-          ...ticket,
-          currentStatus: updatedStatus,
-          inspectionDetails: {
-            ...ticket.inspectionDetails,
-            inspectionStartedAt: ticket.inspectionDetails?.inspectionStartedAt || formattedDate,
-            measurements: measurements || ticket.inspectionDetails?.measurements,
-            recommendedSquad: recommendedSquad || ticket.inspectionDetails?.recommendedSquad,
-            inspectionRemarks: remarks || ticket.inspectionDetails?.inspectionRemarks,
-            beforePhotoUrl: beforePhotoUrl || ticket.inspectionDetails?.beforePhotoUrl,
-            afterPhotoUrl: afterPhotoUrl || ticket.inspectionDetails?.afterPhotoUrl,
-            completionReport: completionReport || ticket.inspectionDetails?.completionReport,
-            completedAt: action === 'complete_work' ? formattedDate : ticket.inspectionDetails?.completedAt
-          },
-          timeline: [...ticket.timeline, newTimelineItem]
+        if (action === 'start_inspection') {
+          timelineTitle = 'On-Ground Site Inspection Initiated';
+          timelineDesc = `Field Officer ${officerUser?.name || 'assigned'} has arrived on site and initiated physical inspection.`;
+        } else if (action === 'submit_inspection' || action === 'submit_remarks') {
+          timelineTitle = 'Inspection Findings & Defect Assessment Filed';
+          timelineDesc = `Measurements: ${measurements || 'Recorded'}. Squad Required: ${recommendedSquad || 'General PWD'}. Remarks: ${remarks}`;
+        } else if (action === 'start_work' || action === 'mark_in_progress') {
+          updatedStatus = 'In Progress';
+          timelineTitle = 'Field Remediation Work Started';
+          timelineDesc = `Contractor squad deployed on site. Material preparation and repairs commenced. Remarks: ${remarks || note || 'Work actively ongoing'}`;
+        } else if (action === 'upload_photos' || action === 'upload_before_photo' || action === 'upload_after_photo') {
+          timelineTitle = 'Site Evidence Documentation Uploaded';
+          timelineDesc = 'Before/after photo evidence recorded in audit log.';
+        } else if (action === 'complete_work' || action === 'submit_completion') {
+          updatedStatus = 'Resolved';
+          timelineTitle = 'Remediation Completed by Field Squad';
+          timelineDesc = `Work order executed and completed. After-remediation photographic proof submitted. Awaiting Citizen Confirmation. Completion Notes: ${completionReport || note || remarks}`;
         }
-      };
-    });
 
-    setReports((prev) =>
-      prev.map((r) => {
-        if (r.ticketNumber !== cleanId) return r;
-        let newStatus = r.status;
-        if (action === 'start_work') newStatus = 'In Progress';
-        if (action === 'complete_work') newStatus = 'Resolved';
+        const newTimelineItem = {
+          stage: updatedStatus,
+          title: timelineTitle,
+          description: timelineDesc,
+          date: formattedDate,
+          completed: true,
+          officer: officerUser?.name || 'Field Officer'
+        };
+
+        const nextBefore = (action === 'upload_before_photo' ? photoUrl : beforePhotoUrl) || ticket.inspectionDetails?.beforePhotoUrl || ticket.inspection?.beforePhotoUrl;
+        const nextAfter = (action === 'upload_after_photo' ? photoUrl : afterPhotoUrl) || ticket.inspectionDetails?.afterPhotoUrl || ticket.inspection?.afterPhotoUrl;
 
         return {
-          ...r,
-          status: newStatus,
-          afterPhotoUrl: afterPhotoUrl || r.afterPhotoUrl,
-          actionsTaken: [
-            ...r.actionsTaken,
-            {
-              timestamp: formattedDate,
-              action: `Field Officer ${officerUser?.name || ''} performed [${action}]: ${remarks || completionReport || 'Inspection progress recorded'}`
-            }
-          ]
+          ...prev,
+          [cleanId]: {
+            ...ticket,
+            currentStatus: updatedStatus,
+            inspection: {
+              ...ticket.inspection,
+              startedAt: ticket.inspection?.startedAt || formattedDate,
+              remarks: remarks || ticket.inspection?.remarks,
+              beforePhotoUrl: nextBefore || null,
+              afterPhotoUrl: nextAfter || null,
+              completionNote: completionReport || ticket.inspection?.completionNote,
+              completedAt: (action === 'complete_work' || action === 'submit_completion') ? formattedDate : ticket.inspection?.completedAt
+            },
+            inspectionDetails: {
+              ...ticket.inspectionDetails,
+              inspectionStartedAt: ticket.inspectionDetails?.inspectionStartedAt || formattedDate,
+              measurements: measurements || ticket.inspectionDetails?.measurements,
+              recommendedSquad: recommendedSquad || ticket.inspectionDetails?.recommendedSquad,
+              inspectionRemarks: remarks || ticket.inspectionDetails?.inspectionRemarks,
+              beforePhotoUrl: nextBefore,
+              afterPhotoUrl: nextAfter,
+              completionReport: completionReport || ticket.inspectionDetails?.completionReport,
+              completedAt: (action === 'complete_work' || action === 'submit_completion') ? formattedDate : ticket.inspectionDetails?.completedAt
+            },
+            timeline: [...ticket.timeline, newTimelineItem]
+          }
         };
-      })
-    );
+      });
 
-    setUserReports((prev) =>
-      prev.map((r) => {
-        if (r.ticketNumber !== cleanId) return r;
-        let newStatus = r.status;
-        if (action === 'start_work') newStatus = 'In Progress';
-        if (action === 'complete_work') newStatus = 'Resolved';
-        return { ...r, status: newStatus };
-      })
-    );
+      setReports((prev) =>
+        prev.map((r) => {
+          if (r.ticketNumber !== cleanId) return r;
+          let newStatus = r.status;
+          if (action === 'start_work' || action === 'mark_in_progress') newStatus = 'In Progress';
+          if (action === 'complete_work' || action === 'submit_completion') newStatus = 'Resolved';
 
-    addAuditLog({
-      action: `FIELD_${action.toUpperCase()}`,
-      relatedRecord: cleanId,
-      description: `Field Officer ${officerUser?.name || 'Officer'} executed [${action}] on ticket ${cleanId}. Remarks: "${remarks || completionReport || 'Completed'}"`,
-      user: officerUser?.name || 'Field Officer',
-      role: 'field_officer'
-    });
+          const nextAfter = (action === 'upload_after_photo' ? photoUrl : afterPhotoUrl) || r.afterPhotoUrl;
 
-    return true;
-  }, [addAuditLog]);
+          return {
+            ...r,
+            status: newStatus,
+            afterPhotoUrl: nextAfter,
+            actionsTaken: [
+              ...r.actionsTaken,
+              {
+                timestamp: formattedDate,
+                action: `Field Officer ${officerUser?.name || ''} performed [${action}]: ${remarks || completionReport || note || 'Inspection progress recorded'}`
+              }
+            ]
+          };
+        })
+      );
+
+      setUserReports((prev) =>
+        prev.map((r) => {
+          if (r.ticketNumber !== cleanId) return r;
+          let newStatus = r.status;
+          if (action === 'start_work' || action === 'mark_in_progress') newStatus = 'In Progress';
+          if (action === 'complete_work' || action === 'submit_completion') newStatus = 'Resolved';
+          return { ...r, status: newStatus };
+        })
+      );
+
+      addAuditLog({
+        action: `FIELD_${action.toUpperCase()}`,
+        relatedRecord: cleanId,
+        description: `Field Officer ${officerUser?.name || 'Officer'} executed [${action}] on ticket ${cleanId}. Remarks: "${remarks || completionReport || note || 'Completed'}"`,
+        user: officerUser?.name || 'Field Officer',
+        role: 'field_officer'
+      });
+
+      return true;
+    }
+
+    return (async () => {
+      const actor = officerUser || authUser;
+      let latestTicket = null;
+
+      if (action === 'upload_photos') {
+        if (beforePhotoUrl) {
+          const safeBefore = validatePhotoValueForApi(beforePhotoUrl);
+          latestTicket = await apiRequest(`/tickets/${encodeURIComponent(cleanId)}/inspection`, {
+            method: 'POST',
+            includeActor: true,
+            actor,
+            body: { action: 'upload_before_photo', photoUrl: safeBefore }
+          });
+        }
+        if (afterPhotoUrl) {
+          const safeAfter = validatePhotoValueForApi(afterPhotoUrl);
+          latestTicket = await apiRequest(`/tickets/${encodeURIComponent(cleanId)}/inspection`, {
+            method: 'POST',
+            includeActor: true,
+            actor,
+            body: { action: 'upload_after_photo', photoUrl: safeAfter }
+          });
+        }
+      } else {
+        const backendActionMap = {
+          start_inspection: 'start_inspection',
+          submit_inspection: 'submit_remarks',
+          submit_remarks: 'submit_remarks',
+          start_work: 'mark_in_progress',
+          mark_in_progress: 'mark_in_progress',
+          upload_before_photo: 'upload_before_photo',
+          upload_after_photo: 'upload_after_photo',
+          complete_work: 'submit_completion',
+          submit_completion: 'submit_completion'
+        };
+
+        const mappedAction = backendActionMap[action] || action;
+        const combinedRemarks =
+          mappedAction === 'submit_remarks'
+            ? [
+                measurements ? `Measurements: ${measurements}` : '',
+                recommendedSquad ? `Squad: ${recommendedSquad}` : '',
+                remarks
+              ]
+                .filter(Boolean)
+                .join(' | ')
+            : remarks;
+
+        const body = { action: mappedAction };
+        if (mappedAction === 'submit_remarks') {
+          body.remarks = combinedRemarks;
+        } else if (mappedAction === 'upload_before_photo') {
+          body.photoUrl = validatePhotoValueForApi(photoUrl || beforePhotoUrl);
+        } else if (mappedAction === 'upload_after_photo') {
+          body.photoUrl = validatePhotoValueForApi(photoUrl || afterPhotoUrl);
+        } else if (mappedAction === 'submit_completion') {
+          body.note = completionReport || note || remarks;
+          if (remarks) body.remarks = remarks;
+        } else if (note || remarks) {
+          body.note = note || remarks;
+        }
+
+        latestTicket = await apiRequest(`/tickets/${encodeURIComponent(cleanId)}/inspection`, {
+          method: 'POST',
+          includeActor: true,
+          actor,
+          body
+        });
+      }
+
+      const normalized = latestTicket ? syncUpdatedTicketIntoState(latestTicket) : null;
+      addAuditLog({
+        action: `FIELD_${action.toUpperCase()}`,
+        relatedRecord: cleanId,
+        description: `Field Officer ${actor?.name || 'Officer'} executed [${action}] on ticket ${cleanId}.`,
+        user: actor?.name || 'Field Officer',
+        role: actor?.role || 'field_officer'
+      });
+
+      return normalized;
+    })();
+  }, [authUser, addAuditLog, syncUpdatedTicketIntoState]);
 
   /**
    * Citizen Confirms Resolution (Transitions to Citizen-Confirmed)
    */
   const confirmCitizenResolution = useCallback((ticketNumber, citizenRemarks = '') => {
     const cleanId = String(ticketNumber).trim().toUpperCase();
-    const formattedDate = getFormattedNow();
+    const activeRole = String(authUser?.role || '').trim().toLowerCase();
+    if (!authUser?.id || activeRole !== 'citizen') {
+      throw new Error('Only signed-in citizen accounts can confirm grievance resolution.');
+    }
 
-    setTickets((prev) => {
-      const ticket = prev[cleanId];
-      if (!ticket) return prev;
+    if (IS_MOCK_MODE) {
+      const formattedDate = getFormattedNow();
 
-      const timelineItem = {
-        stage: 'Citizen-Confirmed',
-        title: 'Resolution Confirmed by Citizen',
-        description: citizenRemarks ? `Citizen Sign-off: "${citizenRemarks}"` : 'Citizen confirmed on-site satisfaction with remediation work.',
-        date: formattedDate,
-        completed: true,
-        officer: 'Verified Citizen'
-      };
+      setTickets((prev) => {
+        const ticket = prev[cleanId];
+        if (!ticket) return prev;
 
-      return {
-        ...prev,
-        [cleanId]: {
-          ...ticket,
-          currentStatus: 'Citizen-Confirmed',
-          verifiedByUser: true,
-          timeline: [...ticket.timeline, timelineItem]
+        const timelineItem = {
+          stage: 'Citizen-Confirmed',
+          title: 'Resolution Confirmed by Citizen',
+          description: citizenRemarks ? `Citizen Sign-off: "${citizenRemarks}"` : 'Citizen confirmed on-site satisfaction with remediation work.',
+          date: formattedDate,
+          completed: true,
+          officer: 'Verified Citizen'
+        };
+
+        return {
+          ...prev,
+          [cleanId]: {
+            ...ticket,
+            currentStatus: 'Citizen-Confirmed',
+            verifiedByUser: true,
+            timeline: [...ticket.timeline, timelineItem]
+          }
+        };
+      });
+
+      setReports((prev) =>
+        prev.map((r) =>
+          r.ticketNumber === cleanId
+            ? {
+                ...r,
+                status: 'Citizen-Confirmed',
+                verifiedCount: (r.verifiedCount || 0) + 1,
+                actionsTaken: [
+                  ...r.actionsTaken,
+                  { timestamp: formattedDate, action: `Citizen confirmed satisfactory resolution: "${citizenRemarks || 'Closed with citizen sign-off'}"` }
+                ]
+              }
+            : r
+        )
+      );
+
+      setUserReports((prev) =>
+        prev.map((r) =>
+          r.ticketNumber === cleanId ? { ...r, status: 'Citizen-Confirmed', verifiedCount: (r.verifiedCount || 0) + 1 } : r
+        )
+      );
+
+      addAuditLog({
+        action: 'CITIZEN_CONFIRMATION',
+        relatedRecord: cleanId,
+        description: `Citizen verified and closed complaint ${cleanId}. Remarks: "${citizenRemarks || 'Satisfied'}"`,
+        user: currentUser.name,
+        role: 'citizen'
+      });
+
+      return true;
+    }
+
+    return (async () => {
+      const updatedTicket = await apiRequest(`/tickets/${encodeURIComponent(cleanId)}/confirm`, {
+        method: 'POST',
+        includeActor: true,
+        actor: authUser,
+        body: {
+          decision: 'confirm',
+          ...(citizenRemarks && citizenRemarks.trim() ? { comment: citizenRemarks.trim() } : {})
         }
-      };
-    });
+      });
 
-    setReports((prev) =>
-      prev.map((r) =>
-        r.ticketNumber === cleanId
-          ? {
-              ...r,
-              status: 'Citizen-Confirmed',
-              verifiedCount: (r.verifiedCount || 0) + 1,
-              actionsTaken: [
-                ...r.actionsTaken,
-                { timestamp: formattedDate, action: `Citizen confirmed satisfactory resolution: "${citizenRemarks || 'Closed with citizen sign-off'}"` }
-              ]
-            }
-          : r
-      )
-    );
+      const normalized = syncUpdatedTicketIntoState(updatedTicket);
+      addAuditLog({
+        action: 'CITIZEN_CONFIRMATION',
+        relatedRecord: cleanId,
+        description: `Citizen verified and closed complaint ${cleanId}. Remarks: "${citizenRemarks || 'Satisfied'}"`,
+        user: authUser?.name || currentUser.name,
+        role: 'citizen'
+      });
 
-    setUserReports((prev) =>
-      prev.map((r) =>
-        r.ticketNumber === cleanId ? { ...r, status: 'Citizen-Confirmed', verifiedCount: (r.verifiedCount || 0) + 1 } : r
-      )
-    );
-
-    addAuditLog({
-      action: 'CITIZEN_CONFIRMATION',
-      relatedRecord: cleanId,
-      description: `Citizen verified and closed complaint ${cleanId}. Remarks: "${citizenRemarks || 'Satisfied'}"`,
-      user: currentUser.name,
-      role: 'citizen'
-    });
-
-    return true;
-  }, [currentUser, addAuditLog]);
+      return normalized;
+    })();
+  }, [authUser, currentUser, addAuditLog, syncUpdatedTicketIntoState]);
 
   /**
    * Reopen Grievance when citizen verification indicates problem persists
    */
   const reopenGrievance = useCallback((ticketNumber, disputeRemarks = '') => {
     const cleanId = String(ticketNumber).trim().toUpperCase();
-    const formattedDate = getFormattedNow();
+    const activeRole = String(authUser?.role || '').trim().toLowerCase();
+    if (!authUser?.id || activeRole !== 'citizen') {
+      throw new Error('Only signed-in citizen accounts can dispute and reopen a grievance.');
+    }
 
-    setTickets((prev) => {
-      const ticket = prev[cleanId];
-      if (!ticket) return prev;
+    if (IS_MOCK_MODE) {
+      const formattedDate = getFormattedNow();
 
-      const timelineItem = {
-        stage: 'Reopened',
-        title: 'Grievance Reopened: Issue Persists on Ground',
-        description: disputeRemarks ? `Citizen Inspection Audit: "${disputeRemarks}"` : 'Citizen inspected site and rejected resolution. Reopened for field re-inspection.',
-        date: formattedDate,
-        completed: true,
-        officer: 'Citizen Audit Appeal'
-      };
+      setTickets((prev) => {
+        const ticket = prev[cleanId];
+        if (!ticket) return prev;
 
-      return {
-        ...prev,
-        [cleanId]: {
-          ...ticket,
-          currentStatus: 'Reopened - Under Investigation',
-          urgencyLevel: 'Critical Priority',
-          timeline: [...ticket.timeline, timelineItem]
+        const timelineItem = {
+          stage: 'Reopened',
+          title: 'Grievance Reopened: Issue Persists on Ground',
+          description: disputeRemarks ? `Citizen Inspection Audit: "${disputeRemarks}"` : 'Citizen inspected site and rejected resolution. Reopened for field re-inspection.',
+          date: formattedDate,
+          completed: true,
+          officer: 'Citizen Audit Appeal'
+        };
+
+        return {
+          ...prev,
+          [cleanId]: {
+            ...ticket,
+            currentStatus: 'Reopened - Under Investigation',
+            urgencyLevel: 'Critical Priority',
+            timeline: [...ticket.timeline, timelineItem]
+          }
+        };
+      });
+
+      setReports((prev) =>
+        prev.map((r) =>
+          r.ticketNumber === cleanId
+            ? {
+                ...r,
+                status: 'Reopened - Under Investigation',
+                severity: 'Critical',
+                actionsTaken: [
+                  ...r.actionsTaken,
+                  { timestamp: formattedDate, action: `Grievance reopened by citizen due to incomplete work: "${disputeRemarks || 'Requires re-inspection'}"` }
+                ]
+              }
+            : r
+        )
+      );
+
+      setUserReports((prev) =>
+        prev.map((r) =>
+          r.ticketNumber === cleanId ? { ...r, status: 'Reopened - Under Investigation', severity: 'Critical' } : r
+        )
+      );
+
+      addAuditLog({
+        action: 'GRIEVANCE_REOPENED',
+        relatedRecord: cleanId,
+        description: `Grievance ${cleanId} reopened by citizen. Dispute: "${disputeRemarks || 'Defect still persists'}"`,
+        user: currentUser.name,
+        role: 'citizen'
+      });
+
+      return true;
+    }
+
+    return (async () => {
+      const updatedTicket = await apiRequest(`/tickets/${encodeURIComponent(cleanId)}/confirm`, {
+        method: 'POST',
+        includeActor: true,
+        actor: authUser,
+        body: {
+          decision: 'dispute',
+          comment: String(disputeRemarks || '').trim()
         }
-      };
-    });
+      });
 
-    setReports((prev) =>
-      prev.map((r) =>
-        r.ticketNumber === cleanId
-          ? {
-              ...r,
-              status: 'Reopened - Under Investigation',
-              severity: 'Critical',
-              actionsTaken: [
-                ...r.actionsTaken,
-                { timestamp: formattedDate, action: `Grievance reopened by citizen due to incomplete work: "${disputeRemarks || 'Requires re-inspection'}"` }
-              ]
-            }
-          : r
-      )
-    );
+      const normalized = syncUpdatedTicketIntoState(updatedTicket);
+      addAuditLog({
+        action: 'GRIEVANCE_REOPENED',
+        relatedRecord: cleanId,
+        description: `Grievance ${cleanId} reopened by citizen. Dispute: "${disputeRemarks}"`,
+        user: authUser?.name || currentUser.name,
+        role: 'citizen'
+      });
 
-    setUserReports((prev) =>
-      prev.map((r) =>
-        r.ticketNumber === cleanId ? { ...r, status: 'Reopened - Under Investigation', severity: 'Critical' } : r
-      )
-    );
-
-    addAuditLog({
-      action: 'GRIEVANCE_REOPENED',
-      relatedRecord: cleanId,
-      description: `Grievance ${cleanId} reopened by citizen. Dispute: "${disputeRemarks || 'Defect still persists'}"`,
-      user: currentUser.name,
-      role: 'citizen'
-    });
-
-    return true;
-  }, [currentUser, addAuditLog]);
+      return normalized;
+    })();
+  }, [authUser, currentUser, addAuditLog, syncUpdatedTicketIntoState]);
 
   /**
    * Approve and Auto-Escalate a Blind Spot Cluster into a Formal Grievance Ticket (Authority Action)
@@ -1044,13 +1653,46 @@ export const ReportsProvider = ({ children }) => {
       targetCluster = DEFAULT_BLIND_SPOTS.find((c) => c.id === clusterId) || DEFAULT_BLIND_SPOTS[0];
     }
 
+    if (!IS_MOCK_MODE) {
+      return (async () => {
+        const created = await submitReport({
+          title: `[Auto-Escalated Blind Spot] ${targetCluster.title}`,
+          category:
+            targetCluster.category === 'Poorly Lit Streets'
+              ? 'lighting'
+              : 'accessibility',
+          subcategory: targetCluster.category,
+          description: `Auto-escalated from ${targetCluster.reportsCount} citizen audits. ${targetCluster.details} Authority Directives: ${adminRemarks || 'Proceed with urgent site mitigation.'}`,
+          ward: targetCluster.ward,
+          location: targetCluster.location,
+          severity: 'Critical',
+          type: 'issue',
+          timeOfDay: targetCluster.timeOfDay
+        });
+
+        setBlindSpotClusters((prev) =>
+          prev.map((c) =>
+            c.id === clusterId
+              ? {
+                  ...c,
+                  approvalStatus: 'Approved & Converted to Ticket',
+                  resultingTicketId: created.ticketNumber,
+                  approvedAt: formattedDate,
+                  approvedBy: authorityUser?.name || 'Municipal Authority'
+                }
+              : c
+          )
+        );
+
+        return created;
+      })();
+    }
+
     const newReport = {
       id: reportId,
       ticketNumber,
       title: `[Auto-Escalated Blind Spot] ${targetCluster.title}`,
-      category: targetCluster.category === 'Poorly Lit Streets' ? 'Streetlight Issues' :
-                targetCluster.category === 'Missing Accessibility Ramps' ? 'Footpath and Accessibility' :
-                'Footpath and Accessibility',
+      category: targetCluster.category === 'Poorly Lit Streets' ? 'Streetlight Issues' : 'Footpath and Accessibility',
       subcategory: targetCluster.category,
       location: targetCluster.location,
       zone: targetCluster.ward.includes('North') ? 'North Zone' : targetCluster.ward.includes('Central') ? 'Central Zone' : 'South Zone',
@@ -1123,50 +1765,155 @@ export const ReportsProvider = ({ children }) => {
     });
 
     return { ticketNumber, report: newReport, ticket: newTicket };
-  }, [addAuditLog]);
+  }, [addAuditLog, submitReport]);
 
   /**
-   * Cast a community verification endorsement vote on a ticket (Citizen action)
+   * Cast a community verification endorsement vote on a report/ticket (Citizen action)
    */
-  const verifyTicket = useCallback((ticketNumber) => {
-    const cleanId = String(ticketNumber).trim().toUpperCase();
-    
-    setTickets((prev) => {
-      const ticket = prev[cleanId];
-      if (!ticket) return prev;
+  const verifyTicket = useCallback((idOrTicketNumber, userIdOverride = null) => {
+    const cleanId = String(idOrTicketNumber || '').trim().toUpperCase();
+    const activeRole = String(authUser?.role || '').trim().toLowerCase();
+    const voterId = userIdOverride || authUser?.id || '';
 
-      const updatedTimeline = ticket.timeline.map((step) => {
-        if (step.stage === 'Verification') {
-          return { ...step, completed: true, title: 'Citizen Verified (Endorsed by You)' };
-        }
-        return step;
+    if (!authUser?.id || activeRole !== 'citizen' || !voterId) {
+      throw new Error('Please sign in with a valid citizen account to verify this report.');
+    }
+
+    if (IS_MOCK_MODE) {
+      setTickets((prev) => {
+        const ticket = prev[cleanId];
+        if (!ticket) return prev;
+
+        const updatedTimeline = ticket.timeline.map((step) => {
+          if (step.stage === 'Verification') {
+            return { ...step, completed: true, title: 'Citizen Verified (Endorsed by You)' };
+          }
+          return step;
+        });
+
+        return {
+          ...prev,
+          [cleanId]: {
+            ...ticket,
+            timeline: updatedTimeline,
+            verifiedByUser: true
+          }
+        };
       });
 
-      return {
-        ...prev,
-        [cleanId]: {
-          ...ticket,
-          timeline: updatedTimeline,
-          verifiedByUser: true
-        }
+      setReports((prev) =>
+        prev.map((r) =>
+          r.ticketNumber === cleanId || r.id === cleanId
+            ? {
+                ...r,
+                verifiedCount: (r.verifiedCount || 0) + 1,
+                verifiedBy: Array.from(new Set([...(r.verifiedBy || []), voterId]))
+              }
+            : r
+        )
+      );
+
+      setUserReports((prev) =>
+        prev.map((r) =>
+          r.ticketNumber === cleanId || r.id === cleanId
+            ? {
+                ...r,
+                verifiedCount: (r.verifiedCount || 0) + 1,
+                verifiedBy: Array.from(new Set([...(r.verifiedBy || []), voterId]))
+              }
+            : r
+        )
+      );
+      return true;
+    }
+
+    return (async () => {
+      const linkedReport =
+        reportsRef.current.find((r) => r.id === cleanId || r.ticketNumber === cleanId) || null;
+      const ticketObj = ticketsRef.current[cleanId] || null;
+      const targetReportId =
+        (cleanId.startsWith('REP-') ? cleanId : null) ||
+        linkedReport?.reportId ||
+        linkedReport?.id ||
+        ticketObj?.reportIds?.[0];
+
+      if (!targetReportId) {
+        throw new Error('Unable to locate report ID for community verification.');
+      }
+
+      const updatedRaw = await apiRequest(`/reports/${encodeURIComponent(targetReportId)}/verify`, {
+        method: 'POST',
+        body: { userId: voterId }
+      });
+
+      const resolvedTicketNum = String(
+        updatedRaw?.ticketNumber || linkedReport?.ticketNumber || ticketObj?.ticketNumber || ''
+      )
+        .trim()
+        .toUpperCase();
+      const existingTicket =
+        (resolvedTicketNum ? ticketsRef.current[resolvedTicketNum] : null) || ticketObj || null;
+      const existingReport =
+        reportsRef.current.find(
+          (r) =>
+            r.id === (updatedRaw?.reportId || updatedRaw?.id || targetReportId) ||
+            (resolvedTicketNum && r.ticketNumber === resolvedTicketNum)
+        ) || linkedReport;
+
+      const mergedRawReport = {
+        ...(existingReport || {}),
+        ...(updatedRaw || {}),
+        assignedOfficerId:
+          updatedRaw?.assignedOfficerId ??
+          existingTicket?.assignedOfficerId ??
+          existingReport?.assignedOfficerId ??
+          null,
+        assignedDepartment:
+          updatedRaw?.assignedDepartment ||
+          existingTicket?.assignedAuthority?.department ||
+          existingReport?.assignedDepartment,
+        assignedOfficer:
+          updatedRaw?.assignedOfficer ||
+          existingTicket?.assignedAuthority?.name ||
+          existingReport?.assignedOfficer,
+        beforePhotoUrl:
+          updatedRaw?.beforePhotoUrl ||
+          existingTicket?.inspection?.beforePhotoUrl ||
+          existingReport?.beforePhotoUrl ||
+          updatedRaw?.photoUrl ||
+          existingReport?.photoUrl ||
+          null,
+        afterPhotoUrl:
+          updatedRaw?.afterPhotoUrl ||
+          existingTicket?.inspection?.afterPhotoUrl ||
+          existingReport?.afterPhotoUrl ||
+          null
       };
-    });
 
-    setReports((prev) =>
-      prev.map((r) =>
-        r.ticketNumber === cleanId ? { ...r, verifiedCount: (r.verifiedCount || 0) + 1 } : r
-      )
-    );
+      const normalized = normalizeReport(mergedRawReport, existingTicket);
+      setReports((prev) =>
+        prev.map((r) => (r.id === normalized.id ? normalized : r))
+      );
+      setUserReports((prev) =>
+        prev.map((r) => (r.id === normalized.id ? normalized : r))
+      );
+      if (normalized.ticketNumber) {
+        setTickets((prev) => {
+          const existing = prev[normalized.ticketNumber] || existingTicket;
+          if (!existing) return prev;
+          return {
+            ...prev,
+            [normalized.ticketNumber]: normalizeTicket(existing, normalized)
+          };
+        });
+      }
 
-    setUserReports((prev) =>
-      prev.map((r) =>
-        r.ticketNumber === cleanId ? { ...r, verifiedCount: (r.verifiedCount || 0) + 1 } : r
-      )
-    );
-  }, []);
+      return normalized;
+    })();
+  }, [authUser]);
 
   /**
-   * Upvote a public report
+   * Upvote a public report (local helper in mock mode)
    */
   const upvoteReport = useCallback((reportId) => {
     setReports((prev) =>
@@ -1557,12 +2304,17 @@ export const ReportsProvider = ({ children }) => {
   return (
     <ReportsContext.Provider
       value={{
+        isMockMode: IS_MOCK_MODE,
+        isLoading,
+        apiError,
+        refreshData,
         reports,
         tickets,
         userReports,
         currentUser,
         blindSpotClusters,
         submitReport,
+        fetchTicketDetails,
         getTicket,
         getReport,
         assignGrievance,

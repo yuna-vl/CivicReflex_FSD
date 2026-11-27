@@ -12,13 +12,16 @@ import {
   Info,
   ShieldCheck,
   LayoutDashboard,
-  Search
+  Search,
+  MapPin
 } from 'lucide-react';
+import CoordinatePicker from '../../components/map/CoordinatePicker';
+import { compressImageFileToDataUrl, validatePhotoValueForApi } from '../../lib/imageUtils';
 import { CIVIC_CATEGORIES } from '../../data/mockReports';
 
 export const ReportIssuePage = () => {
   const navigate = useNavigate();
-  const { submitReport, currentUser } = useReports();
+  const { submitReport, currentUser, isMockMode } = useReports();
 
   // Form State
   const [formData, setFormData] = useState({
@@ -30,12 +33,17 @@ export const ReportIssuePage = () => {
     landmark: '',
     severity: 'Medium',
     citizenName: currentUser.name,
-    citizenPhone: '9876544821'
+    citizenPhone: '9876544821',
+    latitude: '',
+    longitude: ''
   });
 
+  const [showMapPicker, setShowMapPicker] = useState(false);
   const [submittedTicket, setSubmittedTicket] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
   const [photoPreview, setPhotoPreview] = useState(null);
+  const [draftKey, setDraftKey] = useState(() => `cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
 
   const subcategories = {
     roads: ['Pothole Repair', 'Damaged Footpath Slab', 'Road Resurfacing Needed', 'Missing Manhole Cover'],
@@ -55,24 +63,53 @@ export const ReportIssuePage = () => {
     }));
   };
 
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPhotoPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSubmitError('');
+    try {
+      const compressedDataUrl = await compressImageFileToDataUrl(file);
+      setPhotoPreview(compressedDataUrl);
+    } catch (err) {
+      setSubmitError(err?.message || 'Unable to process selected image.');
     }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
+  const handleUseBrowserGps = () => {
+    if (!navigator?.geolocation) {
+      setSubmitError('Geolocation is not supported in this browser.');
+      return;
+    }
+    setSubmitError('');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setFormData((prev) => ({
+          ...prev,
+          latitude: String(Number(pos.coords.latitude.toFixed(6))),
+          longitude: String(Number(pos.coords.longitude.toFixed(6)))
+        }));
+      },
+      () => {
+        setSubmitError('Unable to access browser GPS. You can click the map picker or enter coordinates manually.');
+      }
+    );
+  };
 
-    // Commit to the shared frontend state layer
-    setTimeout(() => {
-      const result = submitReport({
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    setSubmitError('');
+
+    const hasCoords =
+      formData.latitude !== '' &&
+      formData.longitude !== '' &&
+      Number.isFinite(Number(formData.latitude)) &&
+      Number.isFinite(Number(formData.longitude));
+
+    try {
+      const validatedPhoto = photoPreview ? validatePhotoValueForApi(photoPreview) : null;
+      const result = await submitReport({
         category: formData.category,
         subcategory: formData.subcategory,
         title: formData.title,
@@ -82,13 +119,24 @@ export const ReportIssuePage = () => {
         severity: formData.severity,
         citizenName: formData.citizenName,
         citizenPhone: formData.citizenPhone,
-        photoUrl: photoPreview
+        photoUrl: validatedPhoto,
+        idempotencyKey: draftKey,
+        ...(hasCoords
+          ? {
+              latitude: Number(formData.latitude),
+              longitude: Number(formData.longitude)
+            }
+          : {})
       });
 
       setSubmittedTicket(result.ticket);
-      setIsSubmitting(false);
+      setDraftKey(`cr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    }, 400);
+    } catch (err) {
+      setSubmitError(err?.message || 'Unable to submit grievance report.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -97,9 +145,17 @@ export const ReportIssuePage = () => {
 
       <div className="portal-container" style={{ paddingTop: '2rem' }}>
         {/* State Sync Notice */}
-        <Alert type="info" title="Shared Frontend State Integration Active">
-          Submissions automatically synchronize across your <strong>Citizen Dashboard</strong>, <strong>Complaint History</strong>, and the <strong>Tracking Engine</strong>, enabling immediate end-to-end verification.
+        <Alert type="info" title={isMockMode ? 'Shared Frontend State Integration Active (Simulation Mode)' : 'Connected to Live CivicReflex Backend API'}>
+          Submissions automatically synchronize across your <strong>Citizen Dashboard</strong>, <strong>Complaint History</strong>, <strong>Blind Spots Map</strong>, and the <strong>Tracking Engine</strong>.
         </Alert>
+
+        {submitError && (
+          <div style={{ marginTop: '1rem' }}>
+            <Alert type="danger" title="Grievance Submission Failed">
+              {submitError}
+            </Alert>
+          </div>
+        )}
 
         {submittedTicket ? (
           /* Confirmation Success Card */
@@ -192,8 +248,9 @@ export const ReportIssuePage = () => {
                 size="md"
                 onClick={() => {
                   setSubmittedTicket(null);
+                  setSubmitError('');
                   setPhotoPreview(null);
-                  setFormData((prev) => ({ ...prev, title: '', description: '', landmark: '' }));
+                  setFormData((prev) => ({ ...prev, title: '', description: '', landmark: '', latitude: '', longitude: '' }));
                 }}
               >
                 File Another Grievance
@@ -314,6 +371,72 @@ export const ReportIssuePage = () => {
                     </div>
                   </div>
 
+                  {/* Optional Geolocation Coordinates */}
+                  <div className="form-group">
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.35rem' }}>
+                      <label className="form-label" style={{ margin: 0 }}>
+                        Location Coordinates (Optional — plots issue on Blind Spots Map)
+                      </label>
+                      <div style={{ display: 'flex', gap: '0.4rem' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={handleUseBrowserGps}
+                        >
+                          Use My GPS
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setShowMapPicker((v) => !v)}
+                        >
+                          <MapPin size={12} />
+                          <span>{showMapPicker ? 'Hide Map Picker' : 'Pick on Map'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid-2" style={{ gap: '0.75rem' }}>
+                      <input
+                        type="number"
+                        step="any"
+                        min="-90"
+                        max="90"
+                        name="latitude"
+                        value={formData.latitude}
+                        onChange={handleInputChange}
+                        className="form-control"
+                        placeholder="Latitude (e.g. 12.9716)"
+                      />
+                      <input
+                        type="number"
+                        step="any"
+                        min="-180"
+                        max="180"
+                        name="longitude"
+                        value={formData.longitude}
+                        onChange={handleInputChange}
+                        className="form-control"
+                        placeholder="Longitude (e.g. 77.5946)"
+                      />
+                    </div>
+
+                    {showMapPicker && (
+                      <CoordinatePicker
+                        latitude={formData.latitude}
+                        longitude={formData.longitude}
+                        ward={formData.ward}
+                        onChange={({ latitude, longitude }) =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            latitude: String(latitude),
+                            longitude: String(longitude)
+                          }))
+                        }
+                      />
+                    )}
+                  </div>
+
                   {/* Photo Evidence Upload */}
                   <div className="form-group">
                     <label className="form-label">
@@ -344,9 +467,23 @@ export const ReportIssuePage = () => {
                           Click to select photo or drag image here
                         </span>
                         <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                          Supports JPG, PNG up to 5MB (Saved to State Layer)
+                          Local photos are compressed to &le;60 KB for JSON API compatibility, or paste an image URL below
                         </span>
                       </label>
+
+                      <div style={{ marginTop: '0.75rem', textAlign: 'left' }}>
+                        <input
+                          type="url"
+                          className="form-control"
+                          value={photoPreview && !photoPreview.startsWith('data:') ? photoPreview : ''}
+                          onChange={(e) => {
+                            setSubmitError('');
+                            setPhotoPreview(e.target.value);
+                          }}
+                          placeholder="Or paste photo URL (https://...)"
+                          style={{ fontSize: '0.8125rem' }}
+                        />
+                      </div>
 
                       {photoPreview && (
                         <div style={{ marginTop: '1rem' }}>
@@ -420,7 +557,9 @@ export const ReportIssuePage = () => {
                           landmark: 'Opposite State Bank ATM',
                           severity: 'High',
                           citizenName: currentUser.name,
-                          citizenPhone: '9876544821'
+                          citizenPhone: '9876544821',
+                          latitude: '12.9352',
+                          longitude: '77.6245'
                         });
                       }}
                     >
