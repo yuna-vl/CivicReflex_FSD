@@ -62,6 +62,11 @@ const auditLogSchema = new mongoose.Schema(
     hash: {
       type: String,
       required: true
+    },
+    // Flag indicating seeded demo data
+    isSeed: {
+      type: Boolean,
+      default: false
     }
   },
   {

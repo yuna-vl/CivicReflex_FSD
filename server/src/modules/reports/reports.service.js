@@ -210,11 +210,66 @@ const createReport = async (reportData, idempotencyKey, user) => {
   return { report: savedReport, isExisting: false };
 };
 
+// Helper functions for cursor pagination
+const encodeReportCursor = (item) => {
+  if (!item) return null;
+  const dateStr = item.reportedAt instanceof Date
+    ? item.reportedAt.toISOString()
+    : new Date(item.reportedAt || item.createdAt).toISOString();
+  const idStr = item._id ? item._id.toString() : '';
+  return Buffer.from(`${dateStr}|${idStr}`).toString('base64');
+};
+
+const decodeReportCursor = (cursorStr) => {
+  if (!cursorStr || typeof cursorStr !== 'string') return null;
+  try {
+    const raw = Buffer.from(cursorStr, 'base64').toString('utf8');
+    const [dateStr, idStr] = raw.split('|');
+    if (!dateStr || !idStr) return null;
+    const date = new Date(dateStr);
+    if (isNaN(date.getTime())) return null;
+    return { date, id: idStr };
+  } catch (err) {
+    return null;
+  }
+};
+
+// Optimized field projection for list queries
+const REPORT_LIST_PROJECTION = {
+  reportId: 1,
+  ticketNumber: 1,
+  type: 1,
+  title: 1,
+  category: 1,
+  subcategory: 1,
+  location: 1,
+  zone: 1,
+  wardNumber: 1,
+  landmark: 1,
+  geo: 1,
+  photoUrl: 1,
+  status: 1,
+  severity: 1,
+  upvotes: 1,
+  verifiedCount: 1,
+  isAnonymous: 1,
+  timeOfDay: 1,
+  reportedAt: 1,
+  assignedDepartment: 1,
+  assignedOfficer: 1,
+  slaTargetDate: 1,
+  createdBy: 1,
+  isFlagged: 1,
+  moderationStatus: 1,
+  createdAt: 1,
+  updatedAt: 1
+};
+
 /**
- * Queries reports with filters, text search, and pagination (newest first)
+ * Queries reports with filters, text search, cursor/page pagination, and lean projections
  * @param {Object} queryParams
  * @param {boolean} [isAuthority=false]
- * @returns {Promise<{ items: Array, page: number, limit: number, total: number }>}
+ * @returns {Promise<{ items: Array, nextCursor: string|null, page: number, limit: number, total: number }>}
  */
 const getReports = async (queryParams, isAuthority = false) => {
   const {
@@ -225,18 +280,16 @@ const getReports = async (queryParams, isAuthority = false) => {
     timeOfDay,
     search,
     bbox,
+    cursor,
     page: rawPage,
     limit: rawLimit
   } = queryParams;
 
-  // Sanitize pagination inputs
-  const parsedPage = parseInt(rawPage, 10);
+  // Sanitize pagination inputs (limit capped at 50)
   const parsedLimit = parseInt(rawLimit, 10);
-  const page = !isNaN(parsedPage) && parsedPage > 0 ? parsedPage : 1;
   const limit = !isNaN(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 50) : 20;
-  const skip = (page - 1) * limit;
 
-  // Build MongoDB query filter
+  // Build base MongoDB query filter
   const filter = {};
 
   if (wardNumber) filter.wardNumber = wardNumber;
@@ -260,16 +313,72 @@ const getReports = async (queryParams, isAuthority = false) => {
     filter.$or = [{ title: safeRegex }, { description: safeRegex }];
   }
 
-  // Execute query and count in parallel
-  const [items, total] = await Promise.all([
-    Report.find(filter).sort({ reportedAt: -1 }).skip(skip).limit(limit),
+  // Cursor pagination evaluation
+  let queryFilter = filter;
+  let useCursor = false;
+
+  if (cursor) {
+    const decoded = decodeReportCursor(cursor);
+    if (decoded && mongoose.Types.ObjectId.isValid(decoded.id)) {
+      useCursor = true;
+      const cursorCondition = {
+        $or: [
+          { reportedAt: { $lt: decoded.date } },
+          { reportedAt: decoded.date, _id: { $lt: new mongoose.Types.ObjectId(decoded.id) } }
+        ]
+      };
+      queryFilter = Object.keys(filter).length > 0
+        ? { $and: [filter, cursorCondition] }
+        : cursorCondition;
+    }
+  }
+
+  const parsedPage = parseInt(rawPage, 10);
+  const page = !isNaN(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+  const skip = useCursor ? 0 : (page - 1) * limit;
+
+  // Execute lean query with projection and count in parallel
+  const [rawItems, total] = await Promise.all([
+    Report.find(queryFilter)
+      .select(REPORT_LIST_PROJECTION)
+      .sort({ reportedAt: -1, _id: -1 })
+      .skip(skip)
+      .limit(limit + 1)
+      .lean(),
     Report.countDocuments(filter)
   ]);
 
-  const formattedItems = isAuthority ? items.map((doc) => doc.toJSON({ isAuthority: true })) : items;
+  const hasNextPage = rawItems.length > limit;
+  const itemsSlice = hasNextPage ? rawItems.slice(0, limit) : rawItems;
+  const nextCursor = hasNextPage ? encodeReportCursor(itemsSlice[itemsSlice.length - 1]) : null;
+
+  // Apply privacy redaction rules on plain objects
+  const formattedItems = itemsSlice.map((doc) => {
+    const item = { ...doc, id: doc.reportId };
+    delete item.__v;
+    delete item.idempotencyKey;
+    delete item.verifiedBy;
+
+    if (!isAuthority) {
+      if (item.type === 'experience' && item.isAnonymous) {
+        item.createdBy = '[Protected]';
+        if (item.geo && Array.isArray(item.geo.coordinates)) {
+          item.geo = {
+            ...item.geo,
+            coordinates: item.geo.coordinates.map((c) =>
+              typeof c === 'number' ? Math.round(c * 100) / 100 : c
+            )
+          };
+        }
+      }
+    }
+
+    return item;
+  });
 
   return {
     items: formattedItems,
+    nextCursor,
     page,
     limit,
     total

@@ -37,6 +37,11 @@ const categorySchema = new mongoose.Schema(
     description: {
       type: String,
       trim: true
+    },
+    // Flag indicating seeded demo data
+    isSeed: {
+      type: Boolean,
+      default: false
     }
   },
   {

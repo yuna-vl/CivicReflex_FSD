@@ -83,6 +83,7 @@ const logAudit = (params) => {
     .catch((err) => {
       console.error('[AuditLog Failure] Could not persist audit entry:', err.message);
     });
+  return auditQueue;
 };
 
 /**

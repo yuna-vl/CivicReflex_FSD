@@ -9,6 +9,8 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const { clientUrl } = require('./config/env');
 const ApiError = require('./utils/ApiError');
 const errorHandler = require('./middleware/errorHandler');
@@ -25,10 +27,29 @@ registerLogListeners();
 
 const app = express();
 
-// 1. Security Headers - Helmet sets various HTTP headers to protect against common web vulnerabilities
+// 1. Response Compression - Compress HTTP response payloads for network efficiency
+app.use(compression());
+
+// 2. General Rate Limiter - 200 requests per 15 minutes per IP
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  skip: () => process.env.NODE_ENV === 'test',
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      message: 'Too many requests from this IP, please try again after 15 minutes'
+    }
+  }
+});
+app.use(generalLimiter);
+
+// 3. Security Headers - Helmet sets various HTTP headers to protect against common web vulnerabilities
 app.use(helmet());
 
-// 2. CORS - Cross-Origin Resource Sharing enables the frontend client to communicate with this API
+// 4. CORS - Cross-Origin Resource Sharing enables the frontend client to communicate with this API
 app.use(
   cors({
     origin: clientUrl,
@@ -36,10 +57,10 @@ app.use(
   })
 );
 
-// 3. Body Parser - Parses incoming JSON request bodies and makes them available under req.body
+// 5. Body Parser - Parses incoming JSON request bodies and makes them available under req.body
 app.use(express.json());
 
-// 4. Health Check Route - Used by monitoring tools, load balancers, and developers to verify API health
+// 6. Health Check Route - Used by monitoring tools, load balancers, and developers to verify API health
 app.get('/health', (req, res) => {
   res.status(200).json({
     success: true,
