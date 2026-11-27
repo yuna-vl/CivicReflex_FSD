@@ -6,6 +6,8 @@ import Table from '../../components/common/Table';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
 import Alert from '../../components/common/Alert';
+import LiveDataNotice from '../../components/common/LiveDataNotice';
+import { formatShortDate, getAuthorityDirectTransitions } from '../../lib/normalizers';
 import {
   Search,
   Eye,
@@ -20,7 +22,7 @@ export const AuthorityGrievancesPage = () => {
   const navigate = useNavigate();
   const selectedTicketParam = searchParams.get('ticket') || '';
 
-  const { reports, getTicket, updateGrievanceStatus } = useReports();
+  const { reports, getTicket, getReport, fetchTicketDetails, updateGrievanceStatus, isMockMode, isLoading, apiError, refreshData } = useReports();
   const { user } = useAuth();
 
   // Filters state
@@ -47,6 +49,8 @@ export const AuthorityGrievancesPage = () => {
   const [newStatus, setNewStatus] = useState('');
   const [statusRemarks, setStatusRemarks] = useState('');
   const [statusUpdateSuccess, setStatusUpdateSuccess] = useState(false);
+  const [statusUpdateBusy, setStatusUpdateBusy] = useState(false);
+  const [statusUpdateError, setStatusUpdateError] = useState('');
 
   // Sync selectedTicket when param changes
   const [prevParam, setPrevParam] = useState(selectedTicketParam);
@@ -80,7 +84,10 @@ export const AuthorityGrievancesPage = () => {
           return false;
         }
         // Status
-        if (statusFilter !== 'ALL' && !r.status.toLowerCase().includes(statusFilter.toLowerCase())) {
+        if (statusFilter === 'ESCALATED_REOPENED') {
+          const s = String(r.status || '').toLowerCase();
+          if (!s.includes('escalated') && !s.includes('reopened')) return false;
+        } else if (statusFilter !== 'ALL' && !String(r.status || '').toLowerCase().includes(statusFilter.toLowerCase())) {
           return false;
         }
         // Priority
@@ -102,15 +109,28 @@ export const AuthorityGrievancesPage = () => {
     return filteredReports.slice(start, start + pageSize);
   }, [filteredReports, currentPage, pageSize]);
 
-  const handleOpenDetail = (ticketNumber) => {
+  const handleOpenDetail = async (ticketNumber) => {
     const found = getTicket(ticketNumber);
     setSelectedTicket(found);
     setStatusRemarks('');
     setStatusUpdateSuccess(false);
+    setStatusUpdateError('');
     if (found) {
-      setNewStatus(found.currentStatus);
+      setNewStatus(getAuthorityDirectTransitions(found.currentStatus)[0] || '');
     }
     setSearchParams({ ticket: ticketNumber });
+
+    if (!isMockMode && ticketNumber) {
+      try {
+        const res = await fetchTicketDetails(ticketNumber);
+        if (res?.ticket) {
+          setSelectedTicket(res.ticket);
+          setNewStatus(getAuthorityDirectTransitions(res.ticket.currentStatus)[0] || '');
+        }
+      } catch {
+        // Keep local ticket preview if refresh fails
+      }
+    }
   };
 
   const handleCloseDetail = () => {
@@ -118,15 +138,27 @@ export const AuthorityGrievancesPage = () => {
     setSearchParams({});
   };
 
-  const handleStatusTransitionSubmit = (e) => {
+  const handleStatusTransitionSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedTicket || !newStatus) return;
+    if (!selectedTicket || !newStatus || statusUpdateBusy) return;
 
-    updateGrievanceStatus(selectedTicket.ticketNumber, newStatus, statusRemarks, user);
-    setStatusUpdateSuccess(true);
-    // Refresh modal ticket
-    const refreshed = getTicket(selectedTicket.ticketNumber);
-    setSelectedTicket(refreshed);
+    setStatusUpdateBusy(true);
+    setStatusUpdateError('');
+    setStatusUpdateSuccess(false);
+
+    try {
+      const updated = await updateGrievanceStatus(selectedTicket.ticketNumber, newStatus, statusRemarks, user);
+      setStatusUpdateSuccess(true);
+      const refreshed = updated && typeof updated === 'object' ? updated : getTicket(selectedTicket.ticketNumber);
+      if (refreshed) {
+        setSelectedTicket(refreshed);
+        setNewStatus(getAuthorityDirectTransitions(refreshed.currentStatus)[0] || '');
+      }
+    } catch (err) {
+      setStatusUpdateError(err?.message || 'Unable to transition grievance status.');
+    } finally {
+      setStatusUpdateBusy(false);
+    }
   };
 
   // Table Columns (S.No, Ticket ID, Category, Location, Ward, Date, Priority, Status, Action)
@@ -179,8 +211,8 @@ export const AuthorityGrievancesPage = () => {
     {
       header: 'Reported Date',
       key: 'reportedAt',
-      width: '120px',
-      render: (val) => <span style={{ fontSize: '0.8125rem' }}>{val ? val.split(',')[0].split(' ')[0] : 'Today'}</span>
+      width: '125px',
+      render: (val) => <span style={{ fontSize: '0.8125rem' }}>{formatShortDate(val, 'Today')}</span>
     },
     {
       header: 'Priority',
@@ -251,6 +283,14 @@ export const AuthorityGrievancesPage = () => {
           </Button>
         </div>
       </div>
+
+      <LiveDataNotice
+        isMockMode={isMockMode}
+        isLoading={isLoading}
+        apiError={apiError}
+        onRetry={refreshData}
+        resourceLabel="municipal grievance register"
+      />
 
       {/* Filter and Search Bar */}
       <div
@@ -341,11 +381,12 @@ export const AuthorityGrievancesPage = () => {
               <option value="ALL">All Lifecycle Statuses</option>
               <option value="Reported">Reported</option>
               <option value="Verified">Verified</option>
+              <option value="Under Review">Under Review</option>
               <option value="Assigned">Assigned</option>
               <option value="In Progress">In Progress</option>
               <option value="Resolved">Resolved</option>
               <option value="Citizen-Confirmed">Citizen-Confirmed</option>
-              <option value="Escalated">Escalated / Reopened</option>
+              <option value="ESCALATED_REOPENED">Escalated / Reopened</option>
             </select>
           </div>
 
@@ -401,12 +442,22 @@ export const AuthorityGrievancesPage = () => {
           marginBottom: '1.5rem'
         }}
       >
+        {!isMockMode && isLoading && reports.length === 0 ? (
+          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+            Loading municipal grievances from backend server...
+          </div>
+        ) : !isMockMode && apiError && reports.length === 0 ? (
+          <div style={{ padding: '2.5rem', textAlign: 'center', color: '#991B1B', fontSize: '0.875rem' }}>
+            Grievance register could not be loaded because the backend request failed. Use Retry Connection above.
+          </div>
+        ) : (
         <Table
           columns={columns}
           data={paginatedReports}
           emptyMessage="No grievances matching the selected filter criteria."
           caption="Municipal Grievance Register Database"
         />
+        )}
 
         {/* Pagination Controls */}
         {totalPages > 1 && (
@@ -509,6 +560,14 @@ export const AuthorityGrievancesPage = () => {
               </button>
             </div>
 
+            {statusUpdateError && (
+              <div style={{ marginBottom: '1rem' }}>
+                <Alert type="danger" title="Status Transition Rejected">
+                  {statusUpdateError}
+                </Alert>
+              </div>
+            )}
+
             {statusUpdateSuccess && (
               <div style={{ marginBottom: '1rem' }}>
                 <Alert type="success" title="Status Transition Successfully Committed">
@@ -525,12 +584,32 @@ export const AuthorityGrievancesPage = () => {
                   Citizen Photographic Evidence
                 </div>
                 <div style={{ border: '1px solid var(--color-border)', borderRadius: '2px', overflow: 'hidden', height: '220px', backgroundColor: '#F1F5F9', marginBottom: '1rem' }}>
-                  <img
-                    src="https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&w=600&q=80"
-                    alt="Civic defect evidence"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
+                  {(selectedTicket.inspection?.beforePhotoUrl || selectedTicket.photoUrl || getReport(selectedTicket.ticketNumber)?.photoUrl) ? (
+                    <img
+                      src={selectedTicket.inspection?.beforePhotoUrl || selectedTicket.photoUrl || getReport(selectedTicket.ticketNumber)?.photoUrl}
+                      alt="Civic defect evidence"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', fontSize: '0.8125rem' }}>
+                      No citizen photograph attached
+                    </div>
+                  )}
                 </div>
+                {selectedTicket.inspection?.afterPhotoUrl && (
+                  <div style={{ marginBottom: '1rem' }}>
+                    <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--color-success-green)', marginBottom: '0.35rem' }}>
+                      Post-Repair Verification Photo
+                    </div>
+                    <div style={{ border: '1px solid var(--color-success-border)', borderRadius: '2px', overflow: 'hidden', height: '160px', backgroundColor: '#F1F5F9' }}>
+                      <img
+                        src={selectedTicket.inspection.afterPhotoUrl}
+                        alt="Post-repair evidence"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '0.35rem' }}>
                   Grievance Description & Impact
@@ -566,47 +645,90 @@ export const AuthorityGrievancesPage = () => {
                 </div>
 
                 {/* Authority Lifecycle Status Transition Form */}
-                <div style={{ border: '2px solid var(--color-gold)', padding: '1rem', borderRadius: '2px', backgroundColor: '#FFFDF9' }}>
-                  <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-primary-navy)', marginBottom: '0.5rem' }}>
-                    Execute Authorized Status Transition
-                  </div>
-                  <form onSubmit={handleStatusTransitionSubmit}>
-                    <div style={{ marginBottom: '0.5rem' }}>
-                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Transition Status To:</label>
-                      <select
-                        className="form-control"
-                        value={newStatus}
-                        onChange={(e) => setNewStatus(e.target.value)}
-                        style={{ fontSize: '0.8125rem' }}
-                      >
-                        <option value="Reported">Reported</option>
-                        <option value="Verified">Verified</option>
-                        <option value="Assigned">Assigned</option>
-                        <option value="In Progress">In Progress</option>
-                        <option value="Resolved">Resolved</option>
-                        <option value="Citizen-Confirmed">Citizen-Confirmed</option>
-                        <option value="Reopened - Under Investigation">Reopened - Under Investigation</option>
-                      </select>
-                    </div>
+                {(() => {
+                  const allowedTargets = getAuthorityDirectTransitions(selectedTicket.currentStatus);
+                  const canAssignFromStatus = [
+                    'Reported',
+                    'Verified',
+                    'Under Review',
+                    'Escalated',
+                    'Reopened - Under Investigation',
+                    'Assigned'
+                  ].includes(selectedTicket.currentStatus);
+                  const activeNextStatus = allowedTargets.includes(newStatus)
+                    ? newStatus
+                    : (allowedTargets[0] || '');
 
-                    <div style={{ marginBottom: '0.75rem' }}>
-                      <label className="form-label" style={{ fontSize: '0.75rem' }}>Officer Administrative Remarks:</label>
-                      <input
-                        type="text"
-                        className="form-control"
-                        placeholder="e.g. Remediation verified on site / Dispatched contractor squad"
-                        value={statusRemarks}
-                        onChange={(e) => setStatusRemarks(e.target.value)}
-                        style={{ fontSize: '0.8125rem' }}
-                        required
-                      />
-                    </div>
+                  return (
+                    <div style={{ border: '2px solid var(--color-gold)', padding: '1rem', borderRadius: '2px', backgroundColor: '#FFFDF9' }}>
+                      <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-primary-navy)', marginBottom: '0.5rem' }}>
+                        Execute Authorized Status Transition
+                      </div>
+                      {allowedTargets.length > 0 ? (
+                        <form onSubmit={handleStatusTransitionSubmit}>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <label className="form-label" style={{ fontSize: '0.75rem' }}>Transition Status To:</label>
+                            <select
+                              className="form-control"
+                              value={activeNextStatus}
+                              onChange={(e) => setNewStatus(e.target.value)}
+                              style={{ fontSize: '0.8125rem' }}
+                            >
+                              {allowedTargets.map((statusOpt) => (
+                                <option key={statusOpt} value={statusOpt}>
+                                  {statusOpt}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                    <Button variant="primary" size="sm" fullWidth type="submit" icon={Send}>
-                      Commit Status Transition to Audit History
-                    </Button>
-                  </form>
-                </div>
+                          <div style={{ marginBottom: '0.75rem' }}>
+                            <label className="form-label" style={{ fontSize: '0.75rem' }}>Officer Administrative Remarks:</label>
+                            <input
+                              type="text"
+                              className="form-control"
+                              placeholder="e.g. Escalated for zonal review / Administrative directive"
+                              value={statusRemarks}
+                              onChange={(e) => setStatusRemarks(e.target.value)}
+                              style={{ fontSize: '0.8125rem' }}
+                              required
+                            />
+                          </div>
+
+                          <Button variant="primary" size="sm" fullWidth type="submit" icon={Send} disabled={statusUpdateBusy || !activeNextStatus}>
+                            {statusUpdateBusy ? 'Committing Status...' : 'Commit Status Transition to Audit History'}
+                          </Button>
+                        </form>
+                      ) : (
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                          {selectedTicket.currentStatus === 'Reopened - Under Investigation'
+                            ? 'Reopened complaints require officer reassignment before field execution can resume.'
+                            : selectedTicket.currentStatus === 'Resolved'
+                              ? 'Ticket is Resolved and awaiting citizen confirmation or dispute.'
+                              : selectedTicket.currentStatus === 'Citizen-Confirmed'
+                                ? 'Ticket is closed (Citizen-Confirmed).'
+                                : 'No direct authority status transition is permitted from this status.'}
+                        </div>
+                      )}
+
+                      {canAssignFromStatus && (
+                        <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid var(--color-border-light)' }}>
+                          <Button
+                            variant="gold"
+                            size="sm"
+                            fullWidth
+                            icon={ArrowRight}
+                            onClick={() => navigate(`/authority/assignments?ticket=${selectedTicket.ticketNumber}`)}
+                          >
+                            {selectedTicket.currentStatus === 'Assigned'
+                              ? 'Reassign Officer in Assignment Console'
+                              : 'Assign Officer & Department'}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 

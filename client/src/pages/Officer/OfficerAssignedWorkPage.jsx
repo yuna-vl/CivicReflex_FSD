@@ -5,6 +5,8 @@ import { useReports } from '../../hooks/useReports';
 import Table from '../../components/common/Table';
 import Badge from '../../components/common/Badge';
 import Button from '../../components/common/Button';
+import LiveDataNotice from '../../components/common/LiveDataNotice';
+import { formatShortDate } from '../../lib/normalizers';
 import {
   Search,
   ClipboardCheck,
@@ -14,7 +16,7 @@ import {
 export const OfficerAssignedWorkPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { reports } = useReports();
+  const { reports, isMockMode, isLoading, apiError, refreshData } = useReports();
 
   const officerId = user?.id || 'OFF-PWD-014';
   const officerName = user?.name || 'Mr. V. Nair';
@@ -91,8 +93,8 @@ export const OfficerAssignedWorkPage = () => {
     {
       header: 'Assigned Date',
       key: 'reportedAt',
-      width: '120px',
-      render: (val) => <span style={{ fontSize: '0.8125rem' }}>{val ? val.split(',')[0].split(' ')[0] : 'Recent'}</span>
+      width: '125px',
+      render: (val) => <span style={{ fontSize: '0.8125rem' }}>{formatShortDate(val, 'Recent')}</span>
     },
     {
       header: 'Priority',
@@ -159,6 +161,14 @@ export const OfficerAssignedWorkPage = () => {
           Launch Site Inspection Form
         </Button>
       </div>
+
+      <LiveDataNotice
+        isMockMode={isMockMode}
+        isLoading={isLoading}
+        apiError={apiError}
+        onRetry={refreshData}
+        resourceLabel="assigned field work orders"
+      />
 
       {/* Filter Strip */}
       <div
@@ -234,12 +244,22 @@ export const OfficerAssignedWorkPage = () => {
           boxShadow: 'var(--shadow-subtle)'
         }}
       >
+        {!isMockMode && isLoading && reports.length === 0 ? (
+          <div style={{ padding: '2.5rem', textAlign: 'center', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+            Loading assigned field work orders from backend server...
+          </div>
+        ) : !isMockMode && apiError && reports.length === 0 ? (
+          <div style={{ padding: '2.5rem', textAlign: 'center', color: '#991B1B', fontSize: '0.875rem' }}>
+            Assigned work orders could not be loaded because the backend request failed. Use Retry Connection above.
+          </div>
+        ) : (
         <Table
           columns={columns}
           data={filteredReports}
           emptyMessage="No assigned work orders matching the selected filter criteria."
           caption="Junior Engineer Work Orders Table"
         />
+        )}
       </div>
     </div>
   );

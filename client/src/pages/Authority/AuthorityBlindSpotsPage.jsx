@@ -24,27 +24,37 @@ export const AuthorityBlindSpotsPage = () => {
     'Cluster exceeds safety risk threshold. Approved for priority field mitigation and contractor dispatch.'
   );
   const [escalateSuccess, setEscalateSuccess] = useState(false);
+  const [escalateBusy, setEscalateBusy] = useState(false);
+  const [escalateError, setEscalateError] = useState('');
   const [generatedTicketId, setGeneratedTicketId] = useState('');
 
   const handleOpenClusterModal = (cluster) => {
     setSelectedCluster(cluster);
     setEscalateSuccess(false);
+    setEscalateError('');
   };
 
-  const handleApproveEscalation = (e) => {
+  const handleApproveEscalation = async (e) => {
     e.preventDefault();
-    if (!selectedCluster) return;
+    if (!selectedCluster || escalateBusy) return;
 
-    const res = approveAndEscalateCluster(selectedCluster.id, adminRemarks, user);
-    if (res) {
-      setGeneratedTicketId(res.ticketNumber);
-      setEscalateSuccess(true);
-      // Refresh current cluster state in modal
-      setSelectedCluster((prev) => ({
-        ...prev,
-        approvalStatus: 'Approved & Converted to Ticket',
-        resultingTicketId: res.ticketNumber
-      }));
+    setEscalateBusy(true);
+    setEscalateError('');
+    try {
+      const res = await approveAndEscalateCluster(selectedCluster.id, adminRemarks, user);
+      if (res) {
+        setGeneratedTicketId(res.ticketNumber);
+        setEscalateSuccess(true);
+        setSelectedCluster((prev) => ({
+          ...prev,
+          approvalStatus: 'Approved & Converted to Ticket',
+          resultingTicketId: res.ticketNumber
+        }));
+      }
+    } catch (err) {
+      setEscalateError(err?.message || 'Unable to escalate cluster to backend.');
+    } finally {
+      setEscalateBusy(false);
     }
   };
 
@@ -92,6 +102,11 @@ export const AuthorityBlindSpotsPage = () => {
           </span>
         </div>
 
+        {blindSpotClusters.length === 0 ? (
+          <div style={{ backgroundColor: '#FFFFFF', border: '1px solid var(--color-border)', borderRadius: '2px', padding: '1.5rem', color: 'var(--color-text-secondary)', fontSize: '0.875rem' }}>
+            No algorithmic blind-spot cluster escalations queued in live mode. Citizens can tag blind spots and endorse hazards on the public Blind Spots Map.
+          </div>
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.25rem' }}>
           {blindSpotClusters.map((cluster) => {
             const isApproved = cluster.approvalStatus === 'Approved & Converted to Ticket';
@@ -223,6 +238,7 @@ export const AuthorityBlindSpotsPage = () => {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Review & Approve Escalation Modal */}
@@ -256,6 +272,14 @@ export const AuthorityBlindSpotsPage = () => {
             <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-secondary)', marginBottom: '1.25rem' }}>
               Approving this auto-escalation generates a binding municipal grievance ticket that enters the master register and becomes assignable to field squads.
             </p>
+
+            {escalateError && (
+              <div style={{ marginBottom: '1rem' }}>
+                <Alert type="danger" title="Escalation Failed">
+                  {escalateError}
+                </Alert>
+              </div>
+            )}
 
             {escalateSuccess && (
               <div style={{ marginBottom: '1rem' }}>
@@ -305,8 +329,9 @@ export const AuthorityBlindSpotsPage = () => {
                     variant="gold"
                     type="submit"
                     icon={Check}
+                    disabled={escalateBusy}
                   >
-                    Sanction Work Order Ticket
+                    {escalateBusy ? 'Sanctioning...' : 'Sanction Work Order Ticket'}
                   </Button>
                 )}
 
